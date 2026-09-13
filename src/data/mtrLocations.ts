@@ -202,39 +202,10 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
   },
 ];
 
-export const MTR_DEPOTS_LIST: MTRLocation[] = [
-  {
-    code: 'TWD',
-    nameZh: '荃灣車廠',
-    nameEn: 'Tsuen Wan Depot',
-    title: 'MTRC Depot - TWD',
-    type: 'depot',
-    line: '荃灣綫 (TWL)',
-    description: 'Tsuen Wan Depot 保養報告',
-  },
-  {
-    code: 'TMD',
-    nameZh: '屯門車廠',
-    nameEn: 'Tuen Mun Depot',
-    title: 'MTRC Depot - TMD',
-    type: 'depot',
-    line: '輕鐵 / 屯馬綫',
-    description: 'Tuen Mun Depot 保養報告',
-  },
-  {
-    code: 'SHD',
-    nameZh: '小濠灣車廠',
-    nameEn: 'Siu Ho Wan Depot',
-    title: 'MTRC Depot - SHD',
-    type: 'depot',
-    line: '東涌綫 / 機場快綫',
-    description: 'Siu Ho Wan Depot 保養報告',
-  },
-];
+export const MTR_DEPOTS_LIST: MTRLocation[] = [];
 
 export const ALL_MTR_LOCATIONS: MTRLocation[] = [
   ...MTR_STATIONS_LIST,
-  ...MTR_DEPOTS_LIST,
 ];
 
 export const getLocationByCode = (code: string): MTRLocation | undefined => {

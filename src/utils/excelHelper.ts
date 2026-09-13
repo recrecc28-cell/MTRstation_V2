@@ -8,6 +8,13 @@ export const STANDARD_MTR_ITEMS = [
   'Air Cooled Chiller',
   'Water Cooled Chiller',
   'Chilled Water Pump',
+  'Cooling Tower',
+  'Sea Water Pump',
+  'Air Compressor',
+  'Chlorination Plant',
+  'Chlorination Degas Cyclone',
+  'Oxidation-Reduction Potential System',
+  'Sea Water Intake Screen',
   'Washable Panel Filter',
   'Chem. Dosing Unit',
   'Motor Control Centre',
@@ -361,7 +368,90 @@ export function matchStandardWorkDescription(rawText: string): string {
   const exact = STANDARD_MTR_ITEMS.find((item) => text.includes(item.toUpperCase()));
   if (exact) return exact;
 
-  return rawText.trim();
+  // Cooling Tower (COT)
+  if (text.includes('COOLING TOWER') || text.includes('ECS-COT') || text.includes('-COT-') || text.endsWith('-COT') || /\bCOT\b/.test(text)) {
+    return 'Cooling Tower';
+  }
+
+  // Sea Water Pump (SWP / SCWP)
+  if (
+    text.includes('SEA WATER PUMP') ||
+    text.includes('SEAWATER PUMP') ||
+    text.includes('ECS-SWP') ||
+    text.includes('-SWP-') ||
+    text.endsWith('-SWP') ||
+    text.includes('ECS-SCWP') ||
+    text.includes('-SCWP-') ||
+    text.endsWith('-SCWP') ||
+    /\bSCWP\b/.test(text) ||
+    /\bSWP\b/.test(text)
+  ) {
+    return 'Sea Water Pump';
+  }
+
+  // Air Compressor (SAC / AIRC / COMPRESSOR)
+  if (
+    text.includes('AIR COMPRESSOR') ||
+    text.includes('COMPRESSOR') ||
+    text.includes('ECS-SAC') ||
+    text.includes('-SAC-') ||
+    text.endsWith('-SAC') ||
+    /\bAIRC\b/.test(text) ||
+    /\bSAC\b/.test(text)
+  ) {
+    return 'Air Compressor';
+  }
+
+  // Chlorination Degas Cyclone (CYN)
+  if (
+    text.includes('CHLORINATION DEGAS CYCLONE') ||
+    text.includes('DEGAS CYCLONE') ||
+    text.includes('ECS-CYN') ||
+    text.includes('-CYN-') ||
+    text.endsWith('-CYN') ||
+    /\bCYN\b/.test(text)
+  ) {
+    return 'Chlorination Degas Cyclone';
+  }
+
+  // Chlorination Plant (ECL)
+  if (
+    text.includes('CHLORINATION PLANT') ||
+    text.includes('CHLORINATION') ||
+    text.includes('ECS-ECL') ||
+    text.includes('-ECL-') ||
+    text.endsWith('-ECL') ||
+    /\bECL\b/.test(text)
+  ) {
+    return 'Chlorination Plant';
+  }
+
+  // Oxidation-Reduction Potential System (ORP)
+  if (
+    text.includes('OXIDATION-REDUCTION') ||
+    text.includes('OXIDATION REDUCTION') ||
+    text.includes('POTENTIAL SYSTEM') ||
+    text.includes('ECS-ORP') ||
+    text.includes('-ORP-') ||
+    text.endsWith('-ORP') ||
+    /\bORP\b/.test(text)
+  ) {
+    return 'Oxidation-Reduction Potential System';
+  }
+
+  // Sea Water Intake Screen (SWS / INS)
+  if (
+    text.includes('SEA WATER INTAKE') ||
+    text.includes('INTAKE SCREEN') ||
+    text.includes('ECS-SWS') ||
+    text.includes('-SWS-') ||
+    text.endsWith('-SWS') ||
+    /\bSWS\b/.test(text)
+  ) {
+    return 'Sea Water Intake Screen';
+  }
+
+  return cleanWorkDescription(rawText);
 }
 
 /**
@@ -550,15 +640,30 @@ export function extractMonthYear(cellVal: any): string | null {
 
 export function cleanWorkDescription(rawText: string): string {
   if (!rawText) return '';
-  const std = matchStandardWorkDescription(rawText);
-  if (std) return std;
 
   let cleaned = rawText
-    .replace(/^\s*\d+[MY]\s*[;,\-]\s*/i, '')
-    .replace(/^\s*[A-Z0-9]{2,5}\s*[;,\-]\s*/i, '')
+    // Remove "TH; " or "TH: " prefix
+    .replace(/^\s*TH\s*[:;,\-]\s*/i, '')
+    // Remove frequency prefix like "1M;", "10W;", "1W;", "2M;", "1Y;"
+    .replace(/^\s*\d+\s*[MWYD]\s*[:;,\-]\s*/i, '')
+    // Remove acronym tag like "ACC;", "AHU;", "COT;", "ECL;", "FCU;", "PHX;", "PHE;", "SCWP;", "INS;", "WCC;", "AIRC;", "ORP;", "CYN;"
+    .replace(/^\s*[A-Z0-9]{2,6}\s*[:;,\-]\s*/i, '')
+    // Remove secondary frequency prefix if present (e.g. "TH; 1M; ...")
+    .replace(/^\s*\d+\s*[MWYD]\s*[:;,\-]\s*/i, '')
+    // Remove trailing contractor tags
     .replace(/[;,\-]\s*by\s+contractor\s*$/i, '')
     .replace(/[;,\-]\s*contractor\s*$/i, '')
+    // Remove trailing location or system tags like "; TML", "; TML [COP]", "[COP]"
+    .replace(/[;,\-]\s*TML\b/gi, '')
+    .replace(/\[\s*COP\s*\]/gi, '')
+    .replace(/\s+/g, ' ')
     .trim();
+
+  // If after cleaning it matches standard list, use standard
+  const matched = matchStandardWorkDescription(cleaned);
+  if (matched && matched !== cleaned) {
+    return matched;
+  }
 
   return cleaned || rawText.trim();
 }
@@ -793,6 +898,7 @@ export function parseGenericTableRows(
   let totalWoReadCount = 0;
   const parsedItems: MaintenanceItem[] = [];
   const summaryMap = new Map<string, { count: number; wos: string[]; frequency: string }>();
+  const stationItemsMap: Record<string, MaintenanceItem[]> = {};
 
   // 3. Process data rows: STRICTLY filter by target station and enforce:
   // - QTY = 1 forever
@@ -839,11 +945,8 @@ export function parseGenericTableRows(
       ''
     ).toUpperCase();
 
-    // STRICT FILTER: If targetStation is selected, only import rows matching targetStation!
-    // If the row belongs to another station (e.g. TIC, CRP, DIH, ETS, MEF when LAK is selected), IGNORE IT!
-    if (targetStation && rowStn && rowStn !== targetStation) {
-      continue;
-    }
+    // Determine which station this item belongs to
+    const itemStation = rowStn || targetStation;
 
     // Identify WO identifier: WONUM first
     const wonum = woNumVal || assetNumVal;
@@ -851,13 +954,13 @@ export function parseGenericTableRows(
       continue;
     }
 
-    // Equipment description: standard matched or cleaned description
+    // Equipment description: standard matched or cleaned description without any cryptic code prefixes
     const stdDesc =
       matchStandardWorkDescription(descVal) ||
       matchStandardWorkDescription(assetNumVal) ||
       matchStandardWorkDescription(jpNumVal);
 
-    const workDescription = stdDesc || cleanWorkDescription(descVal || 'Air Cooled Chiller');
+    const workDescription = cleanWorkDescription(stdDesc || descVal || 'Air Cooled Chiller');
 
     // Detect maintenance frequency (e.g. "1M; ACC..." or JPNUM "ECS-ACC-T-LAK-1M-9")
     const detectedFreq = detectMaintenanceFrequency(`${descVal} ${jpNumVal}`);
@@ -884,11 +987,16 @@ export function parseGenericTableRows(
     // Default to '100%' under M if no other frequency was found
     const finalM = detectedFreq.m || (!hasSpecificFreq ? '100%' : '');
 
-    const itemIndex = parsedItems.length + 1;
+    // Collect into station-specific map
+    if (!stationItemsMap[itemStation]) {
+      stationItemsMap[itemStation] = [];
+    }
+
+    const itemIndex = stationItemsMap[itemStation].length + 1;
     const item: MaintenanceItem = {
-      id: `item-${itemIndex}`,
-      station: targetStation, // e.g. LAK
-      workDescription, // e.g. Air Cooled Chiller
+      id: `item-${itemStation}-${itemIndex}`,
+      station: itemStation,
+      workDescription, // cleaned description
       pmWo: wonum, // PM W/O = WONUM
       qty: '1', // QTY=1 forever
       m: finalM,
@@ -902,7 +1010,7 @@ export function parseGenericTableRows(
       y3: '',
       subEntries: [
         {
-          id: `sub-${itemIndex}-1`,
+          id: `sub-${itemStation}-${itemIndex}-1`,
           pmWo: wonum,
           m: finalM,
           m2: detectedFreq.m2 || '',
@@ -915,20 +1023,25 @@ export function parseGenericTableRows(
       ],
     };
 
-    parsedItems.push(item);
-    totalWoReadCount++;
+    stationItemsMap[itemStation].push(item);
 
-    // Summary tracking
-    if (!summaryMap.has(workDescription)) {
-      summaryMap.set(workDescription, {
-        count: 0,
-        wos: [],
-        frequency: finalM ? '1M' : detectedFreq.m2 ? '2M' : detectedFreq.m3 ? '3M' : detectedFreq.m4 ? '4M' : detectedFreq.m6 ? '6M' : detectedFreq.y ? '1Y' : '1M',
-      });
+    // If targetStation matches or not specified, add to primary parsedItems
+    if (!targetStation || itemStation === targetStation) {
+      parsedItems.push(item);
+      totalWoReadCount++;
+
+      // Summary tracking
+      if (!summaryMap.has(workDescription)) {
+        summaryMap.set(workDescription, {
+          count: 0,
+          wos: [],
+          frequency: finalM ? '1M' : detectedFreq.m2 ? '2M' : detectedFreq.m3 ? '3M' : detectedFreq.m4 ? '4M' : detectedFreq.m6 ? '6M' : detectedFreq.y ? '1Y' : '1M',
+        });
+      }
+      const sumEntry = summaryMap.get(workDescription)!;
+      sumEntry.count++;
+      if (wonum) sumEntry.wos.push(wonum);
     }
-    const sumEntry = summaryMap.get(workDescription)!;
-    sumEntry.count++;
-    if (wonum) sumEntry.wos.push(wonum);
   }
 
   const allSummaries: MatchedItemSummary[] = Array.from(summaryMap.entries()).map(([desc, data]) => ({
@@ -970,9 +1083,41 @@ export function parseGenericTableRows(
     },
   };
 
-  const reportsByStationMap: Record<string, Partial<MaintenanceReportData>> = {
-    [targetStation]: primaryReport,
-  };
+  // Build reportsByStationMap for ALL stations discovered in the file!
+  const reportsByStationMap: Record<string, Partial<MaintenanceReportData>> = {};
+  Object.entries(stationItemsMap).forEach(([stn, stnItems]) => {
+    reportsByStationMap[stn] = {
+      depotCode: stn,
+      depotTitle: getLocationTitle(stn),
+      reportMonthYear: globalReportMonthYear || 'September - 2026',
+      contractNo: globalContractNo,
+      items: stnItems,
+      overallTotals: {
+        pmWoTotal: '',
+        qtyTotal: String(stnItems.length),
+        mTotal: String(stnItems.filter((i) => i.m && i.m.trim() !== '').length || (stnItems.length ? '100%' : '')),
+        m2Total: '',
+        m3Total: '',
+        m4Total: '',
+        m6Total: '',
+        yTotal: '',
+        m18Total: '',
+        y2Total: '',
+        y3Total: '',
+      },
+      signatories: {
+        preparedByName: globalPreparedByName,
+        preparedByDate: globalPreparedByDate,
+        verifiedByName: '',
+        verifiedByDate: '',
+        endorsedByName: '',
+        endorsedByDate: '',
+      },
+    };
+  });
+  if (!reportsByStationMap[targetStation]) {
+    reportsByStationMap[targetStation] = primaryReport;
+  }
 
   return {
     ...primaryReport,

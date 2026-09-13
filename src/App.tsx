@@ -39,11 +39,11 @@ const STORAGE_KEY_FINETUNE = 'mtr_pm_finetune_settings';
 const STORAGE_KEY_ARCHIVES = 'mtr_pm_archives_history';
 
 export default function App() {
-  // Active Station/Depot Tab - default to LAK
+  // Active Station Tab - default to LAK
   const [currentDepot, setCurrentDepot] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_DEPOT);
-      if (saved && getLocationByCode(saved)) {
+      if (saved && !['TWD', 'TMD', 'SHD'].includes(saved.toUpperCase()) && getLocationByCode(saved)) {
         return saved;
       }
       return 'LAK';
@@ -52,7 +52,7 @@ export default function App() {
     }
   });
 
-  // Reports Map by Station/Depot (17 Stations + 3 Depots)
+  // Reports Map by Station
   const [reportsByDepot, setReportsByDepot] = useState<Record<string, MaintenanceReportData>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
@@ -61,6 +61,10 @@ export default function App() {
       if (saved) {
         try {
           parsedMap = JSON.parse(saved) || {};
+          // Delete old default presets TWD, TMD, SHD
+          delete parsedMap['TWD'];
+          delete parsedMap['TMD'];
+          delete parsedMap['SHD'];
         } catch (e) {
           console.error('Failed to parse saved reports map', e);
         }
@@ -95,6 +99,11 @@ export default function App() {
   const currentLocationInfo = useMemo(() => {
     return getLocationByCode(currentDepot);
   }, [currentDepot]);
+
+  // Stations that currently have imported items
+  const importedStationsList = useMemo(() => {
+    return ALL_MTR_LOCATIONS.filter((loc) => (reportsByDepot[loc.code]?.items?.length || 0) > 0);
+  }, [reportsByDepot]);
 
   // Helper to update current report
   const setReportData = (
@@ -227,8 +236,9 @@ export default function App() {
       : [];
 
     setReportsByDepot((prev) => {
-      const currentForTarget = prev[targetCode] || createEmptyReport(targetCode);
-      const updated: MaintenanceReportData = {
+      const nextMap = { ...prev };
+      const currentForTarget = nextMap[targetCode] || createEmptyReport(targetCode);
+      nextMap[targetCode] = {
         ...currentForTarget,
         ...parsedData,
         depotCode: targetCode,
@@ -256,10 +266,30 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       };
 
-      return {
-        ...prev,
-        [targetCode]: updated,
-      };
+      // Also merge any other stations found in the imported file
+      if (parsedData.reportsByStationMap) {
+        Object.entries(parsedData.reportsByStationMap).forEach(([stnCode, stnReport]: [string, any]) => {
+          if (!stnReport || !stnReport.items || stnCode === targetCode) return;
+          const curr = nextMap[stnCode] || createEmptyReport(stnCode);
+          nextMap[stnCode] = {
+            ...curr,
+            ...stnReport,
+            depotCode: stnCode,
+            depotTitle: stnReport.depotTitle || getLocationTitle(stnCode),
+            reportMonthYear: stnReport.reportMonthYear || parsedData.reportMonthYear || 'September - 2026',
+            contractNo: stnReport.contractNo || 'M1202-19E',
+            items: (stnReport.items as MaintenanceItem[]).map((it, idx) => ({
+              ...it,
+              id: it.id || `item-${stnCode}-${idx + 1}`,
+              station: stnCode,
+              qty: '1',
+            })),
+            updatedAt: new Date().toISOString(),
+          };
+        });
+      }
+
+      return nextMap;
     });
 
     if (targetCode !== currentDepot) {
@@ -440,7 +470,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Train className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-bold text-slate-700">選擇站點 / 車廠:</span>
+              <span className="text-xs font-bold text-slate-700">選擇站點:</span>
               <select
                 value={currentDepot}
                 onChange={(e) => {
@@ -450,15 +480,18 @@ export default function App() {
                 }}
                 className="px-2.5 py-1 bg-slate-50 hover:bg-white border border-slate-300 rounded-lg text-xs font-bold text-emerald-800 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-colors cursor-pointer"
               >
-                <optgroup label="車站與設施 (17)">
+                {/* 優先顯示已導入的內容 */}
+                {importedStationsList.length > 0 && (
+                  <optgroup label={`★ 已導入保養清單 (${importedStationsList.length} 個站點)`}>
+                    {importedStationsList.map((loc) => (
+                      <option key={`imported-${loc.code}`} value={loc.code}>
+                        {loc.code} - {loc.nameZh} (已導入 {reportsByDepot[loc.code]?.items?.length || 0} 筆工單)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label={`港鐵車站與設施 (${MTR_STATIONS_LIST.length})`}>
                   {MTR_STATIONS_LIST.map((loc) => (
-                    <option key={loc.code} value={loc.code}>
-                      {loc.code} - {loc.nameZh} ({loc.nameEn})
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="車廠 (3)">
-                  {MTR_DEPOTS_LIST.map((loc) => (
                     <option key={loc.code} value={loc.code}>
                       {loc.code} - {loc.nameZh} ({loc.nameEn})
                     </option>
