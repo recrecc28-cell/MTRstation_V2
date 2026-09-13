@@ -288,14 +288,14 @@ export const ExcelUploadModal: React.FC<Props> = ({
                   onChange={(e) => setTargetDepotCode(e.target.value)}
                   className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-emerald-700 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <optgroup label="車站與設施 (17)">
+                  <optgroup label="車站與設施">
                     {MTR_STATIONS_LIST.map((loc) => (
                       <option key={loc.code} value={loc.code}>
                         {loc.code} - {loc.nameZh} ({loc.nameEn})
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="車廠 (3)">
+                  <optgroup label="車廠">
                     {MTR_DEPOTS_LIST.map((loc) => (
                       <option key={loc.code} value={loc.code}>
                         {loc.code} - {loc.nameZh} ({loc.nameEn})
@@ -313,7 +313,7 @@ export const ExcelUploadModal: React.FC<Props> = ({
                   className="w-3.5 h-3.5 rounded text-emerald-600 bg-white border-slate-300 focus:ring-emerald-500"
                 />
                 <Filter className="w-3 h-3 text-emerald-600" />
-                <span>智能過濾此站 PM W/O</span>
+                <span>嚴格過濾此站 (非此站忽略)</span>
               </label>
             </div>
 
@@ -323,7 +323,7 @@ export const ExcelUploadModal: React.FC<Props> = ({
                 {targetDepotCode}
               </span>
               {currentLocation ? ` (${currentLocation.nameZh} - ${currentLocation.line})` : ''}
-              。若資料內包含特定車站欄位 (如 LAK、AIR)，系統將優先自動對應。
+              。系統優先檢查 <span className="font-semibold text-slate-700">ASSETNUM 頭 3 個英文字</span>（如 LAK、TIC、CRP、DIH），非所選站點將自動忽略不用，QTY 固定為 1。
             </p>
           </div>
 

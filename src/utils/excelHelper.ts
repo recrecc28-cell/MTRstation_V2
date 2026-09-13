@@ -6,6 +6,7 @@ export const STANDARD_MTR_ITEMS = [
   'Air Handling Unit /Primary Air Handling Unit',
   'Fan Coil Unit',
   'Air Cooled Chiller',
+  'Water Cooled Chiller',
   'Chilled Water Pump',
   'Washable Panel Filter',
   'Chem. Dosing Unit',
@@ -33,6 +34,19 @@ export const STANDARD_MTR_ITEMS = [
 export function matchStandardWorkDescription(rawText: string): string {
   if (!rawText) return '';
   const text = rawText.toUpperCase().trim();
+
+  // Water Cooled Chiller (WCC)
+  if (
+    text.includes('WATER COOLED CHILLER') ||
+    text.includes('WATER-COOLED CHILLER') ||
+    text.includes('ECS-WCC') ||
+    text.includes('-WCC-') ||
+    text.endsWith('-WCC') ||
+    text.includes('WCC-ALL') ||
+    /\bWCC\b/.test(text)
+  ) {
+    return 'Water Cooled Chiller';
+  }
 
   // 1. Air Cooled Chiller (ACC)
   if (
@@ -391,10 +405,20 @@ export const MONTH_NAMES = [
 /**
  * Robust Location / Station Code detector
  * Detects codes like LAK, AIR, TWD from "LAK", "LAK-ECS-ACC-101", "ECS-ACC-T-LAK-1M-9", "Station - LAK", "荔景站"
+ * Special attention: Priority check on the first 3 letters of ASSETNUM / identifier (e.g. LAK-ECS..., TIC-ECS...)
  */
 export function detectLocationCode(rawText: string): string | null {
   if (!rawText) return null;
   const upper = rawText.toUpperCase().trim();
+
+  // 0. User rule: Check the first 3 alphabetic characters of ASSETNUM (e.g., LAK from LAK-ECS-..., TIC from TIC-ECS-...)
+  const prefixMatch = upper.match(/^([A-Z]{3})[-_\s]/);
+  if (prefixMatch) {
+    const candidate = prefixMatch[1];
+    const matchedLoc = ALL_MTR_LOCATIONS.find((loc) => loc.code === candidate);
+    if (matchedLoc) return matchedLoc.code;
+    return candidate;
+  }
 
   // 1. Exact match
   const exact = ALL_MTR_LOCATIONS.find((loc) => loc.code === upper);
@@ -748,9 +772,10 @@ export function parseGenericTableRows(
       const jpNumVal = jpNumIdx !== -1 ? String(row[jpNumIdx] || '').trim() : '';
       const descVal = descIdx !== -1 ? String(row[descIdx] || '').trim() : '';
 
+      // Lookahead priority: Check ASSETNUM first 3 letters, then locVal, etc.
       const detected =
-        detectLocationCode(locVal) ||
         detectLocationCode(assetNumVal) ||
+        detectLocationCode(locVal) ||
         detectLocationCode(jpNumVal) ||
         detectLocationCode(descVal);
 
@@ -804,17 +829,19 @@ export function parseGenericTableRows(
       }
     }
 
-    // Detect station code for this row
+    // Detect station code for this row:
+    // USER RULE: First check ASSETNUM first 3 letters (e.g. LAK from LAK-ECS-ACC-101, TIC from TIC-ECS-PHE-001)
     const rowStn = (
-      detectLocationCode(locVal) ||
       detectLocationCode(assetNumVal) ||
+      detectLocationCode(locVal) ||
       detectLocationCode(jpNumVal) ||
       detectLocationCode(descVal) ||
       ''
     ).toUpperCase();
 
-    // STRICT FILTER: If the row belongs to another station, IGNORE IT!
-    if (rowStn && rowStn !== targetStation) {
+    // STRICT FILTER: If targetStation is selected, only import rows matching targetStation!
+    // If the row belongs to another station (e.g. TIC, CRP, DIH, ETS, MEF when LAK is selected), IGNORE IT!
+    if (targetStation && rowStn && rowStn !== targetStation) {
       continue;
     }
 

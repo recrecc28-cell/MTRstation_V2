@@ -164,6 +164,42 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
     line: '觀塘綫 / 將軍澳綫',
     description: 'Yau Tong Station 月度保養報告',
   },
+  {
+    code: 'CRP',
+    nameZh: '紅磡貨運場 / 車站',
+    nameEn: 'Freight Yard / Station - CRP',
+    title: 'MTRC Station - CRP',
+    type: 'station',
+    line: '東鐵綫 / 屯馬綫',
+    description: 'CRP Station 月度保養報告',
+  },
+  {
+    code: 'DIH',
+    nameZh: '鑽石山站',
+    nameEn: 'Diamond Hill Station',
+    title: 'MTRC Station - DIH',
+    type: 'station',
+    line: '屯馬綫 / 觀塘綫',
+    description: 'Diamond Hill Station 月度保養報告',
+  },
+  {
+    code: 'ETS',
+    nameZh: '尖東站',
+    nameEn: 'East Tsim Sha Tsui Station',
+    title: 'MTRC Station - ETS',
+    type: 'station',
+    line: '屯馬綫 (TML)',
+    description: 'East Tsim Sha Tsui Station 月度保養報告',
+  },
+  {
+    code: 'MEF',
+    nameZh: '美孚站',
+    nameEn: 'Mei Foo Station',
+    title: 'MTRC Station - MEF',
+    type: 'station',
+    line: '荃灣綫 / 屯馬綫',
+    description: 'Mei Foo Station 月度保養報告',
+  },
 ];
 
 export const MTR_DEPOTS_LIST: MTRLocation[] = [
