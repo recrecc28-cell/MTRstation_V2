@@ -12,11 +12,13 @@ import {
   CheckCircle2,
   Train,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 
 interface Props {
   onUploadExcelClick: () => void;
   onResetDefaultPdfClick: () => void;
+  onClearAllDataClick: () => void;
   onSaveToArchiveClick: () => void;
   onOpenArchiveHistoryClick: () => void;
   onExportPdfClick: () => void;
@@ -30,6 +32,7 @@ interface Props {
 export const HeaderNavbar: React.FC<Props> = ({
   onUploadExcelClick,
   onResetDefaultPdfClick,
+  onClearAllDataClick,
   onSaveToArchiveClick,
   onOpenArchiveHistoryClick,
   onExportPdfClick,
@@ -171,7 +174,19 @@ export const HeaderNavbar: React.FC<Props> = ({
                   className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                  <span>重置為原始預設</span>
+                  <span>重置本站為預設 (Reset)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    onClearAllDataClick();
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-red-50 text-red-700 flex items-center gap-2 transition-colors cursor-pointer font-medium"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                  <span>清空全部資料 (Clear All)</span>
                 </button>
 
                 {onOpenPptClick && (

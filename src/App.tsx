@@ -25,6 +25,8 @@ import {
   Check,
   SlidersHorizontal,
   Train,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 
 const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_by_depot_v4';
@@ -319,6 +321,33 @@ export default function App() {
     }
   };
 
+  const handleClearAllData = () => {
+    if (
+      window.confirm(
+        '⚠️ 警告：確定要清空所有資料嗎？(CLEAR ALL DATA)\n\n此操作將會：\n1. 清空所有 20 個車站/車廠已填寫的 PM W/O 及編輯內容\n2. 重置為系統原始初始標準範本\n3. 重置所有版面微調參數\n\n此操作無法撤銷，是否確定執行？'
+      )
+    ) {
+      try {
+        localStorage.removeItem(STORAGE_KEY_REPORTS_MAP);
+        localStorage.removeItem('mtr_pm_reports_by_depot_v3');
+        localStorage.removeItem(STORAGE_KEY_FINETUNE);
+        localStorage.removeItem(STORAGE_KEY_ACTIVE_DEPOT);
+      } catch (e) {
+        console.error('Failed to clear storage', e);
+      }
+
+      const freshMap: Record<string, MaintenanceReportData> = {};
+      ALL_MTR_LOCATIONS.forEach((loc) => {
+        freshMap[loc.code] = createDefaultReport(loc.code);
+      });
+
+      setReportsByDepot(freshMap);
+      setCurrentDepot('AIR');
+      setFineTuneSettings(JSON.parse(JSON.stringify(defaultFineTuneSettings)));
+      showToast('已成功清空所有站點資料並還原為初始狀態！');
+    }
+  };
+
   const handlePrint = () => {
     printDocument('pdf-report-canvas');
   };
@@ -354,6 +383,7 @@ export default function App() {
       <HeaderNavbar
         onUploadExcelClick={() => setIsExcelUploadOpen(true)}
         onResetDefaultPdfClick={handleResetDefaultPdf}
+        onClearAllDataClick={handleClearAllData}
         onSaveToArchiveClick={handleSaveToArchive}
         onOpenArchiveHistoryClick={() => setIsArchiveHistoryOpen(true)}
         onExportPdfClick={handleExportPdf}
@@ -411,23 +441,46 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right: Fine-Tune Toggle & Meta info */}
-          <div className="flex items-center gap-2.5">
-            <span className="hidden md:inline text-xs text-slate-500 font-mono">
+          {/* Right: Reset, Clear All Data, Fine-Tune Toggle & Meta info */}
+          <div className="flex items-center gap-2">
+            <span className="hidden xl:inline text-xs text-slate-500 font-mono mr-1">
               {reportData.reportMonthYear} ‧ {reportData.items.length} 項
             </span>
 
+            {/* Reset Current Station Button */}
+            <button
+              type="button"
+              onClick={handleResetDefaultPdf}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="重置目前選取的站點為原始標準範本 (Reset Current Station)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+              <span>重置本站 (Reset)</span>
+            </button>
+
+            {/* Clear All Data Button */}
+            <button
+              type="button"
+              onClick={handleClearAllData}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="清空所有 20 個車站及車廠的資料，還原為初始狀態 (Clear All Data)"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>清空全部資料 (Clear All)</span>
+            </button>
+
+            {/* Fine-Tune Toggle */}
             <button
               type="button"
               onClick={() => setIsFineTuneOpen(!isFineTuneOpen)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${
                 isFineTuneOpen
-                  ? 'bg-amber-50 text-amber-800 border-amber-300 font-semibold'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
               }`}
               title="調整 PDF 字體大小、邊距與欄寬"
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600" />
               <span>{isFineTuneOpen ? '關閉微調' : '微調排版'}</span>
             </button>
           </div>
