@@ -96,11 +96,6 @@ export default function App() {
     return getLocationByCode(currentDepot);
   }, [currentDepot]);
 
-  // Stations that currently have imported items
-  const importedStationsList = useMemo(() => {
-    return ALL_MTR_LOCATIONS.filter((loc) => (reportsByDepot[loc.code]?.items?.length || 0) > 0);
-  }, [reportsByDepot]);
-
   // Helper to update current report
   const setReportData = (
     newDataOrFn: MaintenanceReportData | ((prev: MaintenanceReportData) => MaintenanceReportData)
@@ -476,16 +471,6 @@ export default function App() {
                 }}
                 className="px-2.5 py-1 bg-slate-50 hover:bg-white border border-slate-300 rounded-lg text-xs font-bold text-emerald-800 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-colors cursor-pointer"
               >
-                {/* 優先顯示已導入的內容 */}
-                {importedStationsList.length > 0 && (
-                  <optgroup label={`★ 已導入保養清單 (${importedStationsList.length} 個站點)`}>
-                    {importedStationsList.map((loc) => (
-                      <option key={`imported-${loc.code}`} value={loc.code}>
-                        {loc.code} - {loc.nameZh} (已導入 {reportsByDepot[loc.code]?.items?.length || 0} 筆工單)
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
                 <optgroup label={`選擇站點 (${MTR_STATIONS_LIST.length})`}>
                   {MTR_STATIONS_LIST.map((loc) => (
                     <option key={loc.code} value={loc.code}>

@@ -203,8 +203,35 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
   },
 ];
 
-// 車廠：名字排列由 A-Z (Sorted alphabetically by Code / English name: SHD -> TMD -> TWD)
+// 車廠：名字排列由 A-Z (Sorted alphabetically: HTD -> KBD -> PHD -> SHD -> TAD -> TMD -> TPB -> TWD)
 export const MTR_DEPOTS_LIST: MTRLocation[] = [
+  {
+    code: 'HTD',
+    nameZh: '何東樓車廠',
+    nameEn: 'Ho Tung Lau Depot',
+    title: 'MTRC Depot - HTD',
+    type: 'depot',
+    line: '東鐵綫 (EAL)',
+    description: 'Ho Tung Lau Depot 保養報告',
+  },
+  {
+    code: 'KBD',
+    nameZh: '九龍灣車廠',
+    nameEn: 'Kowloon Bay Depot',
+    title: 'MTRC Depot - KBD',
+    type: 'depot',
+    line: '觀塘綫 (KTL)',
+    description: 'Kowloon Bay Depot 保養報告',
+  },
+  {
+    code: 'PHD',
+    nameZh: '八鄉車廠',
+    nameEn: 'Pat Heung Depot',
+    title: 'MTRC Depot - PHD',
+    type: 'depot',
+    line: '屯馬綫 (TML)',
+    description: 'Pat Heung Depot 保養報告',
+  },
   {
     code: 'SHD',
     nameZh: '小濠灣車廠',
@@ -215,6 +242,15 @@ export const MTR_DEPOTS_LIST: MTRLocation[] = [
     description: 'Siu Ho Wan Depot 保養報告',
   },
   {
+    code: 'TAD',
+    nameZh: '大圍車廠',
+    nameEn: 'Tai Wai Depot',
+    title: 'MTRC Depot - TAD',
+    type: 'depot',
+    line: '屯馬綫 (TML)',
+    description: 'Tai Wai Depot 保養報告',
+  },
+  {
     code: 'TMD',
     nameZh: '屯門車廠',
     nameEn: 'Tuen Mun Depot',
@@ -222,6 +258,15 @@ export const MTR_DEPOTS_LIST: MTRLocation[] = [
     type: 'depot',
     line: '輕鐵 / 屯馬綫',
     description: 'Tuen Mun Depot 保養報告',
+  },
+  {
+    code: 'TPB',
+    nameZh: '大埔維修廠',
+    nameEn: 'Tai Po Depot',
+    title: 'MTRC Depot - TPB',
+    type: 'depot',
+    line: '東鐵綫 / 港鐵巴士',
+    description: 'Tai Po Depot 保養報告',
   },
   {
     code: 'TWD',
