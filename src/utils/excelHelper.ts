@@ -18,6 +18,7 @@ export const STANDARD_MTR_ITEMS = [
   'Make Up Water Tank',
   'Metering Pump',
   'Presurization Unit',
+  'Plate Heat Exchanger',
   'Pipework',
   'Motorised Operated Valve',
   'Valve',
@@ -251,6 +252,19 @@ export function matchStandardWorkDescription(rawText: string): string {
     return 'Make Up Water Tank';
   }
 
+  // Plate Heat Exchanger (PHE) / Heat Exchanger
+  if (
+    text.includes('HEAT EXCHANGER') ||
+    text.includes('PLATE HEAT EXCHANGER') ||
+    text.includes('ECS-PHE') ||
+    text.includes('-PHE-') ||
+    text.endsWith('-PHE') ||
+    text.includes('PHE-ALL') ||
+    /\bPHE\b/.test(text)
+  ) {
+    return 'Plate Heat Exchanger';
+  }
+
   // 15. Metering Pump (MP)
   if (
     text.includes('METERING PUMP') ||
@@ -448,6 +462,8 @@ export function detectMaintenanceFrequency(text: string): {
   } else if (/\b3M\b|-3M-|\bQUARTERLY\b|\b3-?MONTH\b/i.test(upper)) {
     res.m3 = '100%';
   } else if (/\b2M\b|-2M-|\bBI[- ]MONTHLY\b|\b2-?MONTH\b/i.test(upper)) {
+    res.m2 = '100%';
+  } else if (/\b10W\b|-10W-|\b10-?WEEK\b/i.test(upper)) {
     res.m2 = '100%';
   } else if (/\b1M\b|-1M-|\bMONTHLY\b|\b1-?MONTH\b|\bM\b/i.test(upper)) {
     res.m = '100%';

@@ -39,7 +39,9 @@ const SAMPLE_MAXIMO_DATA = `Workgroup\tWONUM\tASSETNUM\tTARGSTARTDA\tTARGCOMPDAT
 COURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
 COURYODN\t5001803983\tLAK-ECS-ACC-102\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
 COURYODN\t5001805715\tLAK-ECS-ACC-103\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001801492\tLAK-ECS-ACC-104\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR`;
+COURYODN\t5001801492\tLAK-ECS-ACC-104\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
+COURYODN\t5001809991\tTIC-ECS-ACC-201\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR
+COURYODN\t5001809992\tTIC-ECS-ACC-202\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR`;
 
 export const ExcelUploadModal: React.FC<Props> = ({
   isOpen,
@@ -385,7 +387,7 @@ export const ExcelUploadModal: React.FC<Props> = ({
                   className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors cursor-pointer"
                 >
                   <Sparkles className="w-3 h-3 text-emerald-600" />
-                  <span>帶入範例資料 (LAK 站 4筆工單)</span>
+                  <span>帶入範例資料 (含 LAK 與 TIC 測試忽略)</span>
                 </button>
               </div>
 
