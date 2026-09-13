@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MaintenanceReportData, FineTuneSettings, ArchiveRecord } from './types';
-import { defaultReportData, defaultFineTuneSettings, createDefaultReport, ensureReportQuantities } from './data/defaultReport';
+import {
+  defaultReportData,
+  defaultFineTuneSettings,
+  createDefaultReport,
+  ensureReportQuantities,
+} from './data/defaultReport';
+import {
+  ALL_MTR_LOCATIONS,
+  MTR_STATIONS_LIST,
+  MTR_DEPOTS_LIST,
+  getLocationByCode,
+  getLocationTitle,
+} from './data/mtrLocations';
 import { HeaderNavbar } from './components/HeaderNavbar';
 import { ReportPDFPreview } from './components/ReportPDFPreview';
 import { FineTunePanel } from './components/FineTunePanel';
@@ -8,57 +20,65 @@ import { ExcelUploadModal } from './components/ExcelUploadModal';
 import { ArchiveHistoryModal } from './components/ArchiveHistoryModal';
 import { HelpGuideModal } from './components/HelpGuideModal';
 import { PPTModal } from './components/PPTModal';
-import { RegionSelector } from './components/RegionSelector';
-import { downloadSampleExcelTemplate } from './utils/excelHelper';
 import { exportToPdf, printDocument } from './utils/pdfExport';
-import { Check, Sparkles, SlidersHorizontal, Layers, RotateCcw, Presentation } from 'lucide-react';
+import {
+  Check,
+  SlidersHorizontal,
+  Train,
+} from 'lucide-react';
 
-const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_by_depot_v3';
+const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_by_depot_v4';
+const STORAGE_KEY_ACTIVE_DEPOT = 'mtr_pm_active_depot_code';
 const STORAGE_KEY_FINETUNE = 'mtr_pm_finetune_settings';
 const STORAGE_KEY_ARCHIVES = 'mtr_pm_archives_history';
 
 export default function App() {
-  // --- Active Depot Tab ---
-  const [currentDepot, setCurrentDepot] = useState<string>('TWD');
+  // Active Station/Depot Tab
+  const [currentDepot, setCurrentDepot] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_DEPOT);
+      if (saved && getLocationByCode(saved)) {
+        return saved;
+      }
+      return 'AIR';
+    } catch {
+      return 'AIR';
+    }
+  });
 
-  // --- Reports Map by Depot (TWD, TMD, SHD) ---
+  // Reports Map by Station/Depot (17 Stations + 3 Depots)
   const [reportsByDepot, setReportsByDepot] = useState<Record<string, MaintenanceReportData>>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
+      const savedV4 = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
+      const savedV3 = localStorage.getItem('mtr_pm_reports_by_depot_v3');
+      const saved = savedV4 || savedV3;
+      let parsedMap: Record<string, any> = {};
+
       if (saved) {
-        const parsedMap = JSON.parse(saved);
-        if (parsedMap && (parsedMap.TWD || parsedMap.TMD || parsedMap.SHD)) {
-          return {
-            TWD: ensureReportQuantities(parsedMap.TWD || createDefaultReport('TWD'), 'TWD'),
-            TMD: ensureReportQuantities(parsedMap.TMD || createDefaultReport('TMD'), 'TMD'),
-            SHD: ensureReportQuantities(parsedMap.SHD || createDefaultReport('SHD'), 'SHD'),
-          };
+        try {
+          parsedMap = JSON.parse(saved) || {};
+        } catch (e) {
+          console.error('Failed to parse saved reports map', e);
         }
       }
 
-      // Migration fallback from single report
-      const legacySaved = localStorage.getItem('mtr_pm_report_data');
-      let twdReport = createDefaultReport('TWD');
-      if (legacySaved) {
-        try {
-          const legacy = JSON.parse(legacySaved);
-          if (legacy && legacy.items) {
-            twdReport = legacy;
-          }
-        } catch (e) {}
-      }
+      const result: Record<string, MaintenanceReportData> = {};
+      ALL_MTR_LOCATIONS.forEach((loc) => {
+        const code = loc.code;
+        if (parsedMap[code]) {
+          result[code] = ensureReportQuantities(parsedMap[code], code);
+        } else {
+          result[code] = createDefaultReport(code);
+        }
+      });
 
-      return {
-        TWD: ensureReportQuantities(twdReport, 'TWD'),
-        TMD: ensureReportQuantities(createDefaultReport('TMD'), 'TMD'),
-        SHD: ensureReportQuantities(createDefaultReport('SHD'), 'SHD'),
-      };
+      return result;
     } catch (e) {
-      return {
-        TWD: ensureReportQuantities(createDefaultReport('TWD'), 'TWD'),
-        TMD: ensureReportQuantities(createDefaultReport('TMD'), 'TMD'),
-        SHD: ensureReportQuantities(createDefaultReport('SHD'), 'SHD'),
-      };
+      const result: Record<string, MaintenanceReportData> = {};
+      ALL_MTR_LOCATIONS.forEach((loc) => {
+        result[loc.code] = createDefaultReport(loc.code);
+      });
+      return result;
     }
   });
 
@@ -67,6 +87,11 @@ export default function App() {
     const raw = reportsByDepot[currentDepot] || createDefaultReport(currentDepot);
     return ensureReportQuantities(raw, currentDepot);
   }, [reportsByDepot, currentDepot]);
+
+  // Current Location Info
+  const currentLocationInfo = useMemo(() => {
+    return getLocationByCode(currentDepot);
+  }, [currentDepot]);
 
   // Helper to update current report
   const setReportData = (
@@ -111,10 +136,11 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<string | undefined>();
 
-  // WO Fill Stats for each Depot Tab
+  // WO Fill Stats
   const woStats = useMemo(() => {
     const stats: Record<string, { filled: number; total: number }> = {};
-    ['TWD', 'TMD', 'SHD'].forEach((code) => {
+    ALL_MTR_LOCATIONS.forEach((loc) => {
+      const code = loc.code;
       const rep = reportsByDepot[code];
       if (rep && Array.isArray(rep.items)) {
         const filled = rep.items.filter((item) => item.pmWo && item.pmWo.trim() !== '').length;
@@ -126,7 +152,16 @@ export default function App() {
     return stats;
   }, [reportsByDepot]);
 
-  // --- Auto-save reportsByDepot map to localStorage ---
+  // Auto-save active depot
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_DEPOT, currentDepot);
+    } catch (err) {
+      console.error('Failed to save active depot', err);
+    }
+  }, [currentDepot]);
+
+  // Auto-save reportsByDepot map
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_REPORTS_MAP, JSON.stringify(reportsByDepot));
@@ -136,7 +171,7 @@ export default function App() {
     }
   }, [reportsByDepot]);
 
-  // --- Save fine-tune settings to localStorage ---
+  // Save fine-tune settings
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_FINETUNE, JSON.stringify(fineTuneSettings));
@@ -145,7 +180,7 @@ export default function App() {
     }
   }, [fineTuneSettings]);
 
-  // --- Save archives to localStorage ---
+  // Save archives
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_ARCHIVES, JSON.stringify(archives));
@@ -159,16 +194,18 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // --- Handlers ---
+  // Handlers
   const handleDataParsedFromExcel = (
     parsedData: Partial<MaintenanceReportData>,
     fileName: string
   ) => {
-    // Preserve existing item quantities if parsed items don't provide a new non-empty QTY
+    const targetCode = (parsedData.depotCode || currentDepot).toUpperCase();
+    const currentForTarget = reportsByDepot[targetCode] || createDefaultReport(targetCode);
+
     const mergedItems =
       parsedData.items && parsedData.items.length > 0
         ? (parsedData.items as any[]).map((parsedItem) => {
-            const existingItem = reportData.items.find(
+            const existingItem = currentForTarget.items.find(
               (i) =>
                 i.workDescription === parsedItem.workDescription ||
                 i.id === parsedItem.id
@@ -182,27 +219,37 @@ export default function App() {
 
             return {
               ...parsedItem,
+              station: targetCode,
               qty: finalQty,
             };
           })
-        : reportData.items;
+        : currentForTarget.items;
 
     const updated: MaintenanceReportData = {
-      ...reportData,
+      ...currentForTarget,
       ...parsedData,
-      depotTitle: parsedData.depotTitle || reportData.depotTitle,
-      reportMonthYear: parsedData.reportMonthYear || reportData.reportMonthYear,
-      contractNo: parsedData.contractNo || reportData.contractNo,
+      depotCode: targetCode,
+      depotTitle: parsedData.depotTitle || getLocationTitle(targetCode),
+      reportMonthYear: parsedData.reportMonthYear || currentForTarget.reportMonthYear,
+      contractNo: parsedData.contractNo || currentForTarget.contractNo,
       items: mergedItems,
       signatories: {
-        ...reportData.signatories,
+        ...currentForTarget.signatories,
         ...(parsedData.signatories || {}),
       },
       updatedAt: new Date().toISOString(),
     };
 
-    setReportData(updated);
-    showToast(`成功由 Excel 檔 (${fileName}) 讀取 ${updated.items.length} 項保養資料，已保留原數量 (QTY)！`);
+    if (targetCode !== currentDepot) {
+      setCurrentDepot(targetCode);
+    }
+
+    setReportsByDepot((prev) => ({
+      ...prev,
+      [targetCode]: updated,
+    }));
+
+    showToast(`已匯入 Excel 檔 (${fileName}) 至 ${targetCode} 站 (${updated.items.length} 項目)！`);
   };
 
   const handleSaveToArchive = () => {
@@ -215,15 +262,18 @@ export default function App() {
     };
 
     setArchives([newRecord, ...archives]);
-    showToast(`已成功歸檔紀錄「${reportData.depotTitle} (${reportData.reportMonthYear})」！`);
+    showToast(`已歸檔「${reportData.depotTitle} (${reportData.reportMonthYear})」！`);
   };
 
   const handleLoadArchive = (record: ArchiveRecord) => {
+    if (record.reportData.depotCode) {
+      setCurrentDepot(record.reportData.depotCode);
+    }
     setReportData(record.reportData);
     if (record.fineTuneSettings) {
       setFineTuneSettings(record.fineTuneSettings);
     }
-    showToast(`已載入歸檔紀錄「${record.reportData.depotTitle} (${record.reportData.reportMonthYear})」！`);
+    showToast(`已載入歸檔紀錄「${record.reportData.depotTitle}」！`);
   };
 
   const handleDeleteArchive = (id: string) => {
@@ -241,27 +291,31 @@ export default function App() {
   };
 
   const handleExportPdf = async () => {
-    showToast('正在繪製並準備下載 PDF 報告...');
+    showToast('正在產生並下載 A4 PDF 報告...');
     try {
       const fileName = `MTR_PM_Report_${reportData.depotCode}_${reportData.reportMonthYear.replace(/\s+/g, '_')}.pdf`;
       await exportToPdf('pdf-report-canvas', fileName, 'landscape');
-      showToast('PDF 報告下載成功！');
+      showToast('PDF 報告下載完成！');
     } catch (err) {
       console.error(err);
-      showToast('已切換至畫面直接匯出（請選擇另存為 PDF）');
+      showToast('切換為列印輸出模式');
       window.print();
     }
   };
 
   const handleResetDefaultPdf = () => {
+    const loc = getLocationByCode(currentDepot);
+    const locName = loc ? `${loc.nameZh} (${loc.code})` : currentDepot;
+
     if (
       window.confirm(
-        '確定要重置為原始 PDF 預設內容與字眼嗎？\n（包含 MTRC Depot - TWD、M1202-19E、標準 21 項維修項目與數量及 Lee Siu Keung 簽署名稱）'
+        `確定要重置目前「${locName}」為原始標準預設內容嗎？\n（包含 ${reportData.depotTitle}、M1202-19E、標準 21 項維修項目與數量及簽署名稱）`
       )
     ) {
-      setReportData(JSON.parse(JSON.stringify(defaultReportData)));
+      const freshReport = createDefaultReport(currentDepot);
+      setReportData(freshReport);
       setFineTuneSettings(JSON.parse(JSON.stringify(defaultFineTuneSettings)));
-      showToast('已成功重置並載入原始 PDF 預設內容與排版設定！');
+      showToast(`已重置「${currentDepot}」為原始預設內容！`);
     }
   };
 
@@ -283,20 +337,20 @@ export default function App() {
       return prev;
     });
 
-    showToast(`已切換至 ${targetCode} 車廠獨立分頁 (${newTitle})！`);
+    showToast(`已切換至 ${targetCode} 分頁 (${newTitle})`);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-amber-200 selection:text-slate-900 pb-36">
+    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-sans selection:bg-amber-200 selection:text-slate-900 pb-20">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-16 right-4 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-xl text-xs font-semibold flex items-center gap-2 border border-emerald-400 animate-bounce">
-          <Check className="w-4 h-4 text-emerald-200" />
+        <div className="fixed top-14 right-4 z-50 bg-slate-900 text-white px-3.5 py-2 rounded-lg shadow-xl text-xs font-semibold flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-top-2">
+          <Check className="w-3.5 h-3.5 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Top Navigation */}
+      {/* Top Header Navbar: Simplified to Upload Excel, Export PDF, and clean More dropdown */}
       <HeaderNavbar
         onUploadExcelClick={() => setIsExcelUploadOpen(true)}
         onResetDefaultPdfClick={handleResetDefaultPdf}
@@ -307,72 +361,90 @@ export default function App() {
         onOpenHelpClick={() => setIsHelpOpen(true)}
         onOpenPptClick={() => setIsPptOpen(true)}
         lastSavedTime={lastSavedTime}
+        archiveCount={archives.length}
       />
 
       {/* Main Workspace Canvas */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 space-y-4">
-        {/* Quick Toolbar / Overview */}
-        <div className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs no-print shadow-sm">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-            <span className="text-slate-600">
-              目前報告: <strong className="text-slate-900 font-bold">{reportData.depotTitle}</strong> ‧ 月份: <strong className="text-slate-900 font-bold">{reportData.reportMonthYear}</strong> ‧ 共有 <strong className="text-amber-600 font-bold">{reportData.items.length}</strong> 項保養項目
-            </span>
+      <main className="flex-1 max-w-[1650px] w-full mx-auto p-3 sm:p-5 space-y-3">
+        {/* Single Streamlined Control Bar */}
+        <div className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs no-print">
+          {/* Left: Station Quick Selector & Info */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Train className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-bold text-slate-700">選擇站點 / 車廠:</span>
+              <select
+                value={currentDepot}
+                onChange={(e) => {
+                  const code = e.target.value;
+                  const loc = getLocationByCode(code);
+                  handleSelectRegion(code, loc?.title || `MTRC Station - ${code}`);
+                }}
+                className="px-2.5 py-1 bg-slate-50 hover:bg-white border border-slate-300 rounded-lg text-xs font-bold text-emerald-800 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-colors cursor-pointer"
+              >
+                <optgroup label="車站與設施 (17)">
+                  {MTR_STATIONS_LIST.map((loc) => (
+                    <option key={loc.code} value={loc.code}>
+                      {loc.code} - {loc.nameZh} ({loc.nameEn})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="車廠 (3)">
+                  {MTR_DEPOTS_LIST.map((loc) => (
+                    <option key={loc.code} value={loc.code}>
+                      {loc.code} - {loc.nameZh} ({loc.nameEn})
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Station details */}
+            <div className="hidden sm:flex items-center gap-2 text-xs">
+              <span className="text-slate-300">‧</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                {currentLocationInfo?.line || '港鐵'}
+              </span>
+              <span className="text-[11px] font-mono text-slate-600">
+                PM W/O 已填: <strong className="text-emerald-700 font-bold">{woStats[currentDepot]?.filled || 0}</strong> / {woStats[currentDepot]?.total || 21}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleResetDefaultPdf}
-              className="px-3 py-1.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 font-medium flex items-center gap-1.5 transition-colors border border-amber-200"
-              title="重置並載入原始 PDF 預設內容"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-              <span>重置載入 PDF 內容</span>
-            </button>
+          {/* Right: Fine-Tune Toggle & Meta info */}
+          <div className="flex items-center gap-2.5">
+            <span className="hidden md:inline text-xs text-slate-500 font-mono">
+              {reportData.reportMonthYear} ‧ {reportData.items.length} 項
+            </span>
 
             <button
+              type="button"
               onClick={() => setIsFineTuneOpen(!isFineTuneOpen)}
-              className="px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium flex items-center gap-1.5 transition-colors border border-slate-200"
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border cursor-pointer ${
+                isFineTuneOpen
+                  ? 'bg-amber-50 text-amber-800 border-amber-300 font-semibold'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+              }`}
+              title="調整 PDF 字體大小、邊距與欄寬"
             >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>{isFineTuneOpen ? '隱藏微調面板' : '展開微調面板'}</span>
-            </button>
-
-            <button
-              onClick={() => setIsArchiveHistoryOpen(true)}
-              className="px-3 py-1.5 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-medium flex items-center gap-1.5 transition-colors"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>已歸檔 ({archives.length})</span>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
+              <span>{isFineTuneOpen ? '關閉微調' : '微調排版'}</span>
             </button>
           </div>
         </div>
 
-        {/* 2-Column Layout with Region Selection Sidebar on the Left */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left Region Selector */}
-          <div className="lg:col-span-3 xl:col-span-2 space-y-4">
-            <RegionSelector
-              currentDepotCode={currentDepot}
-              currentDepotTitle={reportData.depotTitle}
-              onSelectRegion={handleSelectRegion}
-              woStats={woStats}
-            />
-          </div>
-
-          {/* Right/Center Live Editable PDF Preview Sheet */}
-          <div className="lg:col-span-9 xl:col-span-10 relative">
-            <ReportPDFPreview
-              reportData={reportData}
-              fineTuneSettings={fineTuneSettings}
-              onUpdateReportData={setReportData}
-              isEditingEnabled={true}
-            />
-          </div>
+        {/* Full-Width Live Editable PDF Preview Sheet */}
+        <div className="w-full relative">
+          <ReportPDFPreview
+            reportData={reportData}
+            fineTuneSettings={fineTuneSettings}
+            onUpdateReportData={setReportData}
+            isEditingEnabled={true}
+          />
         </div>
       </main>
 
-      {/* Bottom Fine-Tuning Drawer Panel ("微調功能在最底, 可隱藏") */}
+      {/* Bottom Fine-Tuning Drawer Panel */}
       <FineTunePanel
         settings={fineTuneSettings}
         onChangeSettings={setFineTuneSettings}
@@ -380,7 +452,7 @@ export default function App() {
         onToggleOpen={() => setIsFineTuneOpen(!isFineTuneOpen)}
       />
 
-      {/* Modals */}
+      {/* Clean Modals */}
       <ExcelUploadModal
         isOpen={isExcelUploadOpen}
         onClose={() => setIsExcelUploadOpen(false)}

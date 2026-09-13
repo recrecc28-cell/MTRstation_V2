@@ -1,4 +1,5 @@
 import { MaintenanceReportData, FineTuneSettings } from '../types';
+import { getLocationTitle } from './mtrLocations';
 
 export const defaultReportData: MaintenanceReportData = {
   id: 'report-twd-2026-07',
@@ -82,12 +83,7 @@ export const ensureReportQuantities = (report: MaintenanceReportData, depotCode:
 
 export const createDefaultReport = (depotCode: string = 'TWD'): MaintenanceReportData => {
   const code = depotCode.toUpperCase();
-  const depotTitles: Record<string, string> = {
-    TWD: 'MTRC Depot - TWD',
-    TMD: 'MTRC Depot - TMD',
-    SHD: 'MTRC Depot - SHD',
-  };
-  const title = depotTitles[code] || `MTRC Depot - ${code}`;
+  const title = getLocationTitle(code);
 
   return {
     id: `report-${code.toLowerCase()}-2026-07`,

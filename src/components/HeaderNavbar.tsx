@@ -1,21 +1,21 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FileSpreadsheet,
-  Download,
   FileDown,
-  Printer,
+  MoreVertical,
+  RotateCcw,
   Archive,
   History,
+  Printer,
   HelpCircle,
-  Train,
-  CheckCircle2,
-  RotateCcw,
   Presentation,
+  CheckCircle2,
+  Train,
+  ChevronDown,
 } from 'lucide-react';
 
 interface Props {
   onUploadExcelClick: () => void;
-  onDownloadTemplateClick?: () => void;
   onResetDefaultPdfClick: () => void;
   onSaveToArchiveClick: () => void;
   onOpenArchiveHistoryClick: () => void;
@@ -24,6 +24,7 @@ interface Props {
   onOpenHelpClick: () => void;
   onOpenPptClick?: () => void;
   lastSavedTime?: string;
+  archiveCount?: number;
 }
 
 export const HeaderNavbar: React.FC<Props> = ({
@@ -36,129 +37,173 @@ export const HeaderNavbar: React.FC<Props> = ({
   onOpenHelpClick,
   onOpenPptClick,
   lastSavedTime,
+  archiveCount = 0,
 }) => {
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
-    <header className="bg-white border-b border-slate-200 text-slate-900 shadow-sm sticky top-0 z-30 no-print">
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Brand & Depot Info */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-red-700 flex items-center justify-center text-white shadow-md border border-red-500">
-            <Train className="w-6 h-6" />
+    <header className="bg-white border-b border-slate-200 text-slate-900 shadow-xs sticky top-0 z-30 no-print">
+      <div className="max-w-[1650px] mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+        {/* Brand */}
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-red-700 flex items-center justify-center text-white shadow-xs">
+            <Train className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-slate-900 tracking-wide">
-                港鐵保養工程報告自動化系統
+              <h1 className="text-sm font-bold text-slate-900 tracking-tight">
+                港鐵保養工程報告系統
               </h1>
-              <span className="px-2 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200 rounded">
-                MTR Depot PM Report
+              <span className="hidden sm:inline-block px-1.5 py-0.2 text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200 rounded">
+                MTR PM Report
               </span>
             </div>
-            <p className="text-xs text-slate-500">
-              Excel 資料自動讀取歸檔 ‧ PDF 每個位置可微調 ‧ 即時繪圖導出
-            </p>
+            {lastSavedTime && (
+              <p className="text-[10px] text-emerald-600 flex items-center gap-1 font-medium">
+                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                <span>已自動暫存</span>
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Action Buttons Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* PPT Presentation Button */}
-          {onOpenPptClick && (
-            <button
-              type="button"
-              onClick={onOpenPptClick}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 hover:border-purple-300 rounded-md transition-colors"
-              title="查看系統介紹 PPT 簡報"
-            >
-              <Presentation className="w-4 h-4 text-purple-600" />
-              <span>系統簡報 (PPT)</span>
-            </button>
-          )}
-
-          {/* Upload Excel Button */}
+        {/* Primary Action Buttons & More Dropdown */}
+        <div className="flex items-center gap-2">
+          {/* Core Button 1: Upload Excel */}
           <button
             type="button"
             onClick={onUploadExcelClick}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-md shadow-xs transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
             title="上傳港鐵保養清單 Excel 檔"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>上傳 Excel 檔</span>
+            <span>上傳 Excel</span>
           </button>
 
-          {/* Reset & Load Default PDF Content */}
-          <button
-            type="button"
-            onClick={onResetDefaultPdfClick}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 hover:border-amber-300 rounded-md transition-colors"
-            title="重置並載入原始 PDF 預設內容"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-            <span>重置 PDF 預設內容</span>
-          </button>
-
-          {/* Save to Archive */}
-          <button
-            type="button"
-            onClick={onSaveToArchiveClick}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md transition-colors"
-            title="歸檔目前保養紀錄"
-          >
-            <Archive className="w-3.5 h-3.5 text-amber-600" />
-            <span>自動歸檔</span>
-          </button>
-
-          {/* Open Archive History */}
-          <button
-            type="button"
-            onClick={onOpenArchiveHistoryClick}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md transition-colors"
-            title="查看已歸檔的每月報告歷史"
-          >
-            <History className="w-3.5 h-3.5 text-sky-600" />
-            <span>歷史紀錄</span>
-          </button>
-
-          {/* Print */}
-          <button
-            type="button"
-            onClick={onPrintClick}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md transition-colors"
-            title="直接列印 PDF 畫面"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-600" />
-            <span className="hidden sm:inline">列印</span>
-          </button>
-
-          {/* Export PDF */}
+          {/* Core Button 2: Export PDF */}
           <button
             type="button"
             onClick={onExportPdfClick}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white rounded-md shadow-md transition-colors"
-            title="匯出高清 A4 PDF 報告"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
+            title="匯出 A4 PDF 報告"
           >
             <FileDown className="w-4 h-4" />
-            <span>匯出 PDF 檔</span>
+            <span>匯出 PDF</span>
           </button>
 
-          {/* Help */}
-          <button
-            type="button"
-            onClick={onOpenHelpClick}
-            className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
-            title="使用說明"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
+          {/* More Options Dropdown (Cleanly collapses secondary buttons) */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setIsMoreOpen(!isMoreOpen)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+              title="更多工具與歷史紀錄"
+            >
+              <span>更多</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isMoreOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isMoreOpen && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50 text-xs text-slate-700 animate-in fade-in slide-in-from-top-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    onSaveToArchiveClick();
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Archive className="w-3.5 h-3.5 text-amber-600" />
+                  <span>儲存至歷史歸檔</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    onOpenArchiveHistoryClick();
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <History className="w-3.5 h-3.5 text-sky-600" />
+                    <span>查看歷史歸檔</span>
+                  </div>
+                  {archiveCount > 0 && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-sky-100 text-sky-700 font-bold">
+                      {archiveCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    onPrintClick();
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-600" />
+                  <span>直接列印畫面</span>
+                </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    onResetDefaultPdfClick();
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                  <span>重置為原始預設</span>
+                </button>
+
+                {onOpenPptClick && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      onOpenPptClick();
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-purple-50 text-purple-700 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Presentation className="w-3.5 h-3.5 text-purple-600" />
+                    <span>系統簡報 (PPT)</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreOpen(false);
+                    onOpenHelpClick();
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-600 transition-colors cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                  <span>操作說明</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {lastSavedTime && (
-        <div className="bg-slate-950 px-4 py-1 text-[11px] text-slate-400 flex items-center justify-end gap-1.5 border-t border-slate-850">
-          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          <span>已即時暫存更新 ({new Date(lastSavedTime).toLocaleTimeString()})</span>
-        </div>
-      )}
     </header>
   );
 };

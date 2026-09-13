@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { MaintenanceReportData, MaintenanceItem } from '../types';
+import { getLocationTitle } from '../data/mtrLocations';
 
 export const STANDARD_MTR_ITEMS = [
   'Air Handling Unit /Primary Air Handling Unit',
@@ -407,7 +408,7 @@ export async function parseExcelFile(
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-        let depotTitle = `MTRC Depot - ${targetDepotCode}`;
+        let depotTitle = getLocationTitle(targetDepotCode);
         let depotCode = targetDepotCode;
         let reportMonthYear = 'July - 2026';
         let contractNo = 'M1202-19E';
@@ -418,16 +419,22 @@ export async function parseExcelFile(
         let endorsedByName = '';
         let endorsedByDate = '';
 
-        // Scanning header meta fields (Depot, Month, Contract No, Date Range)
+        // Scanning header meta fields (Depot, Station, Month, Contract No, Date Range)
         jsonRows.forEach((row) => {
           const rowStr = row.map((cell) => String(cell || '')).join(' ');
 
-          if (rowStr.includes('MTRC Depot') || rowStr.includes('Depot')) {
-            const match = rowStr.match(/(MTRC\s+Depot\s*-\s*[A-Z0-9]+|Depot\s*-\s*[A-Z0-9]+)/i);
+          if (
+            rowStr.includes('MTRC Depot') ||
+            rowStr.includes('MTRC Station') ||
+            rowStr.includes('MTRC OCC') ||
+            rowStr.includes('Depot') ||
+            rowStr.includes('Station')
+          ) {
+            const match = rowStr.match(/(MTRC\s+(?:Depot|Station|OCC)\s*-\s*[A-Z0-9]+|(?:Depot|Station)\s*-\s*[A-Z0-9]+)/i);
             if (match) {
               depotTitle = match[0];
               const codeMatch = depotTitle.match(/-\s*([A-Z0-9]+)/i);
-              if (codeMatch) depotCode = codeMatch[1];
+              if (codeMatch) depotCode = codeMatch[1].toUpperCase();
             }
           }
 
@@ -564,10 +571,16 @@ export async function parseExcelFile(
             const station = stationIdx !== -1 ? String(row[stationIdx] || '').trim() : depotCode;
             const qty = qtyIdx !== -1 ? String(row[qtyIdx] || '').trim() : '';
 
-            // Filter: If ASSET.DESCRIPTION is present and filterByDepot is enabled, it must contain target depot code (e.g. TWD, TMD, SHD)
-            if (filterByDepot && assetDescIdx !== -1 && assetDescVal) {
+            // Filter: If filterByDepot is enabled, check if the row corresponds to the target station/depot
+            if (filterByDepot) {
               const depotKeyword = (targetDepotCode || 'TWD').toUpperCase();
-              if (!assetDescVal.toUpperCase().includes(depotKeyword)) {
+              const matchesKeyword =
+                (assetDescVal && assetDescVal.toUpperCase().includes(depotKeyword)) ||
+                (assetNumVal && assetNumVal.toUpperCase().includes(depotKeyword)) ||
+                (station && station.toUpperCase().includes(depotKeyword)) ||
+                (rowText && rowText.toUpperCase().includes(depotKeyword));
+
+              if ((assetDescVal || assetNumVal) && !matchesKeyword) {
                 continue;
               }
             }
