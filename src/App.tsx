@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MaintenanceReportData, FineTuneSettings, ArchiveRecord } from './types';
+import { MaintenanceReportData, FineTuneSettings, ArchiveRecord, MaintenanceItem } from './types';
 import {
   defaultReportData,
   defaultFineTuneSettings,
   createDefaultReport,
+  createEmptyReport,
+  createLAKReport,
   ensureReportQuantities,
 } from './data/defaultReport';
 import {
@@ -27,33 +29,33 @@ import {
   Train,
   RotateCcw,
   Trash2,
+  FileSpreadsheet,
+  ClipboardPaste,
 } from 'lucide-react';
 
-const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_by_depot_v4';
+const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_empty_v2';
 const STORAGE_KEY_ACTIVE_DEPOT = 'mtr_pm_active_depot_code';
 const STORAGE_KEY_FINETUNE = 'mtr_pm_finetune_settings';
 const STORAGE_KEY_ARCHIVES = 'mtr_pm_archives_history';
 
 export default function App() {
-  // Active Station/Depot Tab
+  // Active Station/Depot Tab - default to LAK
   const [currentDepot, setCurrentDepot] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_DEPOT);
       if (saved && getLocationByCode(saved)) {
         return saved;
       }
-      return 'AIR';
+      return 'LAK';
     } catch {
-      return 'AIR';
+      return 'LAK';
     }
   });
 
   // Reports Map by Station/Depot (17 Stations + 3 Depots)
   const [reportsByDepot, setReportsByDepot] = useState<Record<string, MaintenanceReportData>>(() => {
     try {
-      const savedV4 = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
-      const savedV3 = localStorage.getItem('mtr_pm_reports_by_depot_v3');
-      const saved = savedV4 || savedV3;
+      const saved = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
       let parsedMap: Record<string, any> = {};
 
       if (saved) {
@@ -68,9 +70,9 @@ export default function App() {
       ALL_MTR_LOCATIONS.forEach((loc) => {
         const code = loc.code;
         if (parsedMap[code]) {
-          result[code] = ensureReportQuantities(parsedMap[code], code);
+          result[code] = parsedMap[code];
         } else {
-          result[code] = createDefaultReport(code);
+          result[code] = createEmptyReport(code);
         }
       });
 
@@ -78,16 +80,15 @@ export default function App() {
     } catch (e) {
       const result: Record<string, MaintenanceReportData> = {};
       ALL_MTR_LOCATIONS.forEach((loc) => {
-        result[loc.code] = createDefaultReport(loc.code);
+        result[loc.code] = createEmptyReport(loc.code);
       });
       return result;
     }
   });
 
-  // Current Active Report Data
+  // Current Active Report Data (empty by default)
   const reportData = useMemo(() => {
-    const raw = reportsByDepot[currentDepot] || createDefaultReport(currentDepot);
-    return ensureReportQuantities(raw, currentDepot);
+    return reportsByDepot[currentDepot] || createEmptyReport(currentDepot);
   }, [reportsByDepot, currentDepot]);
 
   // Current Location Info
@@ -100,7 +101,7 @@ export default function App() {
     newDataOrFn: MaintenanceReportData | ((prev: MaintenanceReportData) => MaintenanceReportData)
   ) => {
     setReportsByDepot((prevMap) => {
-      const current = prevMap[currentDepot] || createDefaultReport(currentDepot);
+      const current = prevMap[currentDepot] || createEmptyReport(currentDepot);
       const updated = typeof newDataOrFn === 'function' ? newDataOrFn(current) : newDataOrFn;
       return {
         ...prevMap,
@@ -130,9 +131,20 @@ export default function App() {
   // Modals & Panel Toggles
   const [isFineTuneOpen, setIsFineTuneOpen] = useState(false);
   const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
+  const [uploadModalTab, setUploadModalTab] = useState<'upload' | 'paste'>('upload');
   const [isArchiveHistoryOpen, setIsArchiveHistoryOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isPptOpen, setIsPptOpen] = useState(false);
+
+  const handleOpenUploadModal = () => {
+    setUploadModalTab('upload');
+    setIsExcelUploadOpen(true);
+  };
+
+  const handleOpenPasteModal = () => {
+    setUploadModalTab('paste');
+    setIsExcelUploadOpen(true);
+  };
 
   // Status banner
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -198,60 +210,69 @@ export default function App() {
 
   // Handlers
   const handleDataParsedFromExcel = (
-    parsedData: Partial<MaintenanceReportData>,
+    parsedData: any,
     fileName: string
   ) => {
-    const targetCode = (parsedData.depotCode || currentDepot).toUpperCase();
-    const currentForTarget = reportsByDepot[targetCode] || createDefaultReport(targetCode);
+    const targetCode = (parsedData.detectedLocation || parsedData.depotCode || currentDepot).toUpperCase();
 
-    const mergedItems =
-      parsedData.items && parsedData.items.length > 0
-        ? (parsedData.items as any[]).map((parsedItem) => {
-            const existingItem = currentForTarget.items.find(
-              (i) =>
-                i.workDescription === parsedItem.workDescription ||
-                i.id === parsedItem.id
-            );
-            const finalQty =
-              parsedItem.qty && String(parsedItem.qty).trim() !== ''
-                ? parsedItem.qty
-                : existingItem?.qty && String(existingItem.qty).trim() !== ''
-                ? existingItem.qty
-                : '1';
+    // Ensure all items strictly respect user's rules:
+    // QTY = '1', Station = targetCode
+    const finalItems: MaintenanceItem[] = Array.isArray(parsedData.items)
+      ? (parsedData.items as MaintenanceItem[]).map((it, idx) => ({
+          ...it,
+          id: it.id || `item-${idx + 1}`,
+          station: targetCode,
+          qty: '1', // QTY=1 forever
+        }))
+      : [];
 
-            return {
-              ...parsedItem,
-              station: targetCode,
-              qty: finalQty,
-            };
-          })
-        : currentForTarget.items;
+    setReportsByDepot((prev) => {
+      const currentForTarget = prev[targetCode] || createEmptyReport(targetCode);
+      const updated: MaintenanceReportData = {
+        ...currentForTarget,
+        ...parsedData,
+        depotCode: targetCode,
+        depotTitle: parsedData.depotTitle || getLocationTitle(targetCode),
+        reportMonthYear: parsedData.reportMonthYear || parsedData.detectedMonthYear || currentForTarget.reportMonthYear || 'September - 2026',
+        contractNo: parsedData.contractNo || currentForTarget.contractNo || 'M1202-19E',
+        items: finalItems, // ONLY items from the uploaded Excel!
+        overallTotals: parsedData.overallTotals || {
+          pmWoTotal: '',
+          qtyTotal: String(finalItems.length),
+          mTotal: String(finalItems.filter((i) => i.m && i.m.trim() !== '').length || (finalItems.length ? '100%' : '')),
+          m2Total: '',
+          m3Total: '',
+          m4Total: '',
+          m6Total: '',
+          yTotal: '',
+          m18Total: '',
+          y2Total: '',
+          y3Total: '',
+        },
+        signatories: {
+          ...currentForTarget.signatories,
+          ...(parsedData.signatories || {}),
+        },
+        updatedAt: new Date().toISOString(),
+      };
 
-    const updated: MaintenanceReportData = {
-      ...currentForTarget,
-      ...parsedData,
-      depotCode: targetCode,
-      depotTitle: parsedData.depotTitle || getLocationTitle(targetCode),
-      reportMonthYear: parsedData.reportMonthYear || currentForTarget.reportMonthYear,
-      contractNo: parsedData.contractNo || currentForTarget.contractNo,
-      items: mergedItems,
-      signatories: {
-        ...currentForTarget.signatories,
-        ...(parsedData.signatories || {}),
-      },
-      updatedAt: new Date().toISOString(),
-    };
+      return {
+        ...prev,
+        [targetCode]: updated,
+      };
+    });
 
     if (targetCode !== currentDepot) {
       setCurrentDepot(targetCode);
     }
 
-    setReportsByDepot((prev) => ({
-      ...prev,
-      [targetCode]: updated,
-    }));
+    const summaries = parsedData.matchedItemsSummary;
+    let detailMsg = '';
+    if (summaries && summaries.length > 0) {
+      detailMsg = ` (${summaries.map((s: any) => `${s.workDescription}: ${s.count}筆`).join(', ')})`;
+    }
 
-    showToast(`已匯入 Excel 檔 (${fileName}) 至 ${targetCode} 站 (${updated.items.length} 項目)！`);
+    showToast(`成功匯入 ${fileName}：已載入 ${finalItems.length} 項工作單 (站點: ${targetCode}，QTY: 1)${detailMsg}`);
   };
 
   const handleSaveToArchive = () => {
@@ -305,30 +326,46 @@ export default function App() {
     }
   };
 
+  const handleLoadSampleLak = () => {
+    if (
+      window.confirm(
+        '是否載入 LAK (荔景站) 的示範保養工程數據？\n（包含冷卻機、通風機等設備的標準工單編號與週期數據）'
+      )
+    ) {
+      const sample = createLAKReport();
+      setReportData(sample);
+      showToast('已載入 LAK 示範數據！');
+    }
+  };
+
   const handleResetDefaultPdf = () => {
     const loc = getLocationByCode(currentDepot);
     const locName = loc ? `${loc.nameZh} (${loc.code})` : currentDepot;
 
     if (
       window.confirm(
-        `確定要重置目前「${locName}」為原始標準預設內容嗎？\n（包含 ${reportData.depotTitle}、M1202-19E、標準 21 項維修項目與數量及簽署名稱）`
+        `確定要清空目前「${locName}」的表格資料嗎？\n（將清空所有設備項目與已填寫內容）`
       )
     ) {
-      const freshReport = createDefaultReport(currentDepot);
+      const freshReport = createEmptyReport(currentDepot);
       setReportData(freshReport);
       setFineTuneSettings(JSON.parse(JSON.stringify(defaultFineTuneSettings)));
-      showToast(`已重置「${currentDepot}」為原始預設內容！`);
+      showToast(`已清空「${currentDepot}」表格資料！`);
     }
   };
 
   const handleClearAllData = () => {
     if (
       window.confirm(
-        '⚠️ 警告：確定要清空所有資料嗎？(CLEAR ALL DATA)\n\n此操作將會：\n1. 清空所有 20 個車站/車廠已填寫的 PM W/O 及編輯內容\n2. 重置為系統原始初始標準範本\n3. 重置所有版面微調參數\n\n此操作無法撤銷，是否確定執行？'
+        '⚠️ 警告：確定要清空所有資料嗎？(CLEAR ALL DATA)\n\n此操作將會：\n1. 清空所有 20 個車站/車廠已填寫的設備與工單資料\n2. 重置為完全空白的初始表格\n3. 重置所有版面微調參數\n\n此操作無法撤銷，是否確定執行？'
       )
     ) {
       try {
         localStorage.removeItem(STORAGE_KEY_REPORTS_MAP);
+        localStorage.removeItem('mtr_pm_reports_empty_v1');
+        localStorage.removeItem('mtr_pm_reports_by_depot_v6');
+        localStorage.removeItem('mtr_pm_reports_by_depot_v5');
+        localStorage.removeItem('mtr_pm_reports_by_depot_v4');
         localStorage.removeItem('mtr_pm_reports_by_depot_v3');
         localStorage.removeItem(STORAGE_KEY_FINETUNE);
         localStorage.removeItem(STORAGE_KEY_ACTIVE_DEPOT);
@@ -338,13 +375,13 @@ export default function App() {
 
       const freshMap: Record<string, MaintenanceReportData> = {};
       ALL_MTR_LOCATIONS.forEach((loc) => {
-        freshMap[loc.code] = createDefaultReport(loc.code);
+        freshMap[loc.code] = createEmptyReport(loc.code);
       });
 
       setReportsByDepot(freshMap);
-      setCurrentDepot('AIR');
+      setCurrentDepot('LAK');
       setFineTuneSettings(JSON.parse(JSON.stringify(defaultFineTuneSettings)));
-      showToast('已成功清空所有站點資料並還原為初始狀態！');
+      showToast('已成功清空所有站點資料！');
     }
   };
 
@@ -384,6 +421,7 @@ export default function App() {
         onUploadExcelClick={() => setIsExcelUploadOpen(true)}
         onResetDefaultPdfClick={handleResetDefaultPdf}
         onClearAllDataClick={handleClearAllData}
+        onLoadSampleClick={handleLoadSampleLak}
         onSaveToArchiveClick={handleSaveToArchive}
         onOpenArchiveHistoryClick={() => setIsArchiveHistoryOpen(true)}
         onExportPdfClick={handleExportPdf}
@@ -429,15 +467,38 @@ export default function App() {
               </select>
             </div>
 
-            {/* Station details */}
+            {/* Station details & Quick Read Actions */}
             <div className="hidden sm:flex items-center gap-2 text-xs">
               <span className="text-slate-300">‧</span>
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200">
                 {currentLocationInfo?.line || '港鐵'}
               </span>
               <span className="text-[11px] font-mono text-slate-600">
-                PM W/O 已填: <strong className="text-emerald-700 font-bold">{woStats[currentDepot]?.filled || 0}</strong> / {woStats[currentDepot]?.total || 21}
+                PM W/O 已填: <strong className="text-emerald-700 font-bold">{woStats[currentDepot]?.filled || 0}</strong> / {woStats[currentDepot]?.total || 0}
               </span>
+
+              <span className="text-slate-300">‧</span>
+
+              {/* Direct Paste & Upload shortcuts for fast input */}
+              <button
+                type="button"
+                onClick={handleOpenPasteModal}
+                className="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                title="直接貼上複製的表格或 Maximo 工單數據"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5 text-emerald-600" />
+                <span>貼上資料 (Paste)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenUploadModal}
+                className="px-2.5 py-1 rounded-md text-xs font-medium bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                title="上傳 Excel 檔案自動識別"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
+                <span>上傳 Excel</span>
+              </button>
             </div>
           </div>
 
@@ -447,15 +508,15 @@ export default function App() {
               {reportData.reportMonthYear} ‧ {reportData.items.length} 項
             </span>
 
-            {/* Reset Current Station Button */}
+            {/* Clear Current Station Button */}
             <button
               type="button"
               onClick={handleResetDefaultPdf}
               className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="重置目前選取的站點為原始標準範本 (Reset Current Station)"
+              title="清空目前選取站點的所有資料 (Clear Current Station)"
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-              <span>重置本站 (Reset)</span>
+              <span>清空本站 (Clear Station)</span>
             </button>
 
             {/* Clear All Data Button */}
@@ -512,6 +573,7 @@ export default function App() {
         onDataParsed={handleDataParsedFromExcel}
         currentDepotCode={reportData.depotCode}
         existingItems={reportData.items}
+        defaultTab={uploadModalTab}
       />
 
       <ArchiveHistoryModal

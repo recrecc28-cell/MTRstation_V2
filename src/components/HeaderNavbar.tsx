@@ -19,6 +19,7 @@ interface Props {
   onUploadExcelClick: () => void;
   onResetDefaultPdfClick: () => void;
   onClearAllDataClick: () => void;
+  onLoadSampleClick?: () => void;
   onSaveToArchiveClick: () => void;
   onOpenArchiveHistoryClick: () => void;
   onExportPdfClick: () => void;
@@ -33,6 +34,7 @@ export const HeaderNavbar: React.FC<Props> = ({
   onUploadExcelClick,
   onResetDefaultPdfClick,
   onClearAllDataClick,
+  onLoadSampleClick,
   onSaveToArchiveClick,
   onOpenArchiveHistoryClick,
   onExportPdfClick,
@@ -165,6 +167,20 @@ export const HeaderNavbar: React.FC<Props> = ({
 
                 <div className="my-1 border-t border-slate-100" />
 
+                {onLoadSampleClick && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreOpen(false);
+                      onLoadSampleClick();
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-sky-50 text-sky-700 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-sky-600" />
+                    <span>載入示範範本 (Load Sample)</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -174,7 +190,7 @@ export const HeaderNavbar: React.FC<Props> = ({
                   className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                  <span>重置本站為預設 (Reset)</span>
+                  <span>清空本站表格 (Clear Station)</span>
                 </button>
 
                 <button

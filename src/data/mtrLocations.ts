@@ -78,7 +78,7 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
     code: 'LAK',
     nameZh: '荔景站',
     nameEn: 'Lai King Station',
-    title: 'MTRC Station - LAK',
+    title: 'MTRC AEL / TCL - LAK',
     type: 'station',
     line: '東涌綫 / 荃灣綫',
     description: 'Lai King Station 月度保養報告',

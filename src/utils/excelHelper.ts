@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { MaintenanceReportData, MaintenanceItem } from '../types';
-import { getLocationTitle } from '../data/mtrLocations';
+import { ALL_MTR_LOCATIONS, getLocationTitle, getLocationByCode } from '../data/mtrLocations';
 
 export const STANDARD_MTR_ITEMS = [
   'Air Handling Unit /Primary Air Handling Unit',
@@ -354,9 +354,173 @@ export function matchesDepotKeyword(text: string, targetDepotCode: string = 'TWD
 }
 
 export interface ParseExcelOptions {
-  targetDepotCode?: string; // e.g. TWD
-  filterByDepot?: boolean; // if true, only process PM W/O that match targetDepotCode
+  targetDepotCode?: string; // e.g. LAK, TWD, AIR
+  filterByDepot?: boolean; // if true and targetDepotCode set, prefer targetDepotCode
   existingItems?: MaintenanceItem[]; // optional existing items to preserve QTYs
+}
+
+export const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+/**
+ * Robust Location / Station Code detector
+ * Detects codes like LAK, AIR, TWD from "LAK", "LAK-ECS-ACC-101", "ECS-ACC-T-LAK-1M-9", "Station - LAK", "荔景站"
+ */
+export function detectLocationCode(rawText: string): string | null {
+  if (!rawText) return null;
+  const upper = rawText.toUpperCase().trim();
+
+  // 1. Exact match
+  const exact = ALL_MTR_LOCATIONS.find((loc) => loc.code === upper);
+  if (exact) return exact.code;
+
+  // 2. Token or delimiter match (e.g., LAK-..., ...-LAK-..., [LAK], (LAK))
+  for (const loc of ALL_MTR_LOCATIONS) {
+    const code = loc.code;
+    const regex = new RegExp(`(^|[-_\\s/.,;:()\\[\\]])${code}([-_\\s/.,;:()\\[\\]]|$)`, 'i');
+    if (regex.test(upper)) {
+      return code;
+    }
+  }
+
+  // 3. Match Chinese name
+  for (const loc of ALL_MTR_LOCATIONS) {
+    if (loc.nameZh && upper.includes(loc.nameZh)) {
+      return loc.code;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Intelligent Maintenance Frequency detector
+ * Detects 1M, 2M, 3M, 4M, 6M, Y, 2Y from descriptions (e.g., "1M; ACC; Air Cooled Chiller; by Contractor" or "ECS-ACC-T-LAK-1M-9")
+ */
+export function detectMaintenanceFrequency(text: string): {
+  m?: string;
+  m2?: string;
+  m3?: string;
+  m4?: string;
+  m6?: string;
+  y?: string;
+  m18?: string;
+  y2?: string;
+  y3?: string;
+} {
+  const upper = (text || '').toUpperCase();
+  const res: {
+    m?: string;
+    m2?: string;
+    m3?: string;
+    m4?: string;
+    m6?: string;
+    y?: string;
+    m18?: string;
+    y2?: string;
+    y3?: string;
+  } = {};
+
+  if (/\b3Y\b|36M|-3Y-|-36M-|\b3-?YEAR\b/i.test(upper)) {
+    res.y3 = '100%';
+  } else if (/\b2Y\b|24M|-2Y-|-24M-|\b2-?YEAR\b/i.test(upper)) {
+    res.y2 = '100%';
+  } else if (/\b18M\b|-18M-|\b18-?MONTH\b/i.test(upper)) {
+    res.m18 = '100%';
+  } else if (/\b(1Y|Y)\b|12M|-1Y-|-12M-|\bANNUAL\b|\bYEARLY\b|\b1-?YEAR\b/i.test(upper)) {
+    res.y = '100%';
+  } else if (/\b6M\b|-6M-|\bHALF YEAR\b|\bSEMI[- ]ANNUAL\b|\b6-?MONTH\b/i.test(upper)) {
+    res.m6 = '100%';
+  } else if (/\b4M\b|-4M-|\b4-?MONTH\b/i.test(upper)) {
+    res.m4 = '100%';
+  } else if (/\b3M\b|-3M-|\bQUARTERLY\b|\b3-?MONTH\b/i.test(upper)) {
+    res.m3 = '100%';
+  } else if (/\b2M\b|-2M-|\bBI[- ]MONTHLY\b|\b2-?MONTH\b/i.test(upper)) {
+    res.m2 = '100%';
+  } else if (/\b1M\b|-1M-|\bMONTHLY\b|\b1-?MONTH\b|\bM\b/i.test(upper)) {
+    res.m = '100%';
+  }
+
+  return res;
+}
+
+/**
+ * Extracts Month and Year from dates (e.g. 2026-09-01, 2026/09/30, 46266, "September - 2026")
+ */
+export function extractMonthYear(cellVal: any): string | null {
+  if (cellVal === null || cellVal === undefined || cellVal === '') return null;
+
+  if (typeof cellVal === 'number') {
+    if (cellVal > 25000 && cellVal < 70000) {
+      const utcDays = Math.floor(cellVal - 25569);
+      const date = new Date(utcDays * 86400 * 1000);
+      if (!isNaN(date.getTime())) {
+        return `${MONTH_NAMES[date.getUTCMonth()]} - ${date.getUTCFullYear()}`;
+      }
+    }
+  }
+
+  const str = String(cellVal).trim();
+
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const isoMatch = str.match(/(\d{4})[-/.](\d{1,2})[-/.]\d{1,2}/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = parseInt(isoMatch[2], 10);
+    if (m >= 1 && m <= 12) {
+      return `${MONTH_NAMES[m - 1]} - ${y}`;
+    }
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = str.match(/\d{1,2}[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    const y = dmyMatch[2];
+    const m = parseInt(dmyMatch[1], 10);
+    if (m >= 1 && m <= 12) {
+      return `${MONTH_NAMES[m - 1]} - ${y}`;
+    }
+  }
+
+  // e.g. "September - 2026" or "September 2026"
+  for (let i = 0; i < MONTH_NAMES.length; i++) {
+    const mName = MONTH_NAMES[i];
+    const shortMName = mName.slice(0, 3);
+    const regex = new RegExp(`\\b(${mName}|${shortMName})\\s*[-/]?\\s*(\\d{4})\\b`, 'i');
+    const match = str.match(regex);
+    if (match) {
+      return `${mName} - ${match[2]}`;
+    }
+  }
+
+  return null;
+}
+
+export function cleanWorkDescription(rawText: string): string {
+  if (!rawText) return '';
+  const std = matchStandardWorkDescription(rawText);
+  if (std) return std;
+
+  let cleaned = rawText
+    .replace(/^\s*\d+[MY]\s*[;,\-]\s*/i, '')
+    .replace(/^\s*[A-Z0-9]{2,5}\s*[;,\-]\s*/i, '')
+    .replace(/[;,\-]\s*by\s+contractor\s*$/i, '')
+    .replace(/[;,\-]\s*contractor\s*$/i, '')
+    .trim();
+
+  return cleaned || rawText.trim();
 }
 
 const DEFAULT_QTY_MAP: Record<string, string> = {
@@ -383,15 +547,438 @@ const DEFAULT_QTY_MAP: Record<string, string> = {
   'Pipework Insulation': '1 lot',
 };
 
+export interface MatchedItemSummary {
+  workDescription: string;
+  count: number;
+  wos: string[];
+  frequency: string;
+}
+
+export interface ParsedTableResult extends Partial<MaintenanceReportData> {
+  detectedLocation?: string;
+  detectedMonthYear?: string;
+  totalWoReadCount: number;
+  matchedItemsSummary: MatchedItemSummary[];
+  reportsByStationMap?: Record<string, Partial<MaintenanceReportData>>;
+}
+
+/**
+ * Universal Table Rows Parser
+ * Supports both standard MTR maintenance report tables and raw Maximo work order exports:
+ * Columns: Workgroup | WONUM | ASSETNUM | TARGSTARTDA | TARGCOMPDAT | DESCRIPTION | JPNUM | LOCATION | STATUS ...
+ */
+export function parseGenericTableRows(
+  jsonRows: any[][],
+  options: ParseExcelOptions = {}
+): ParsedTableResult {
+  if (!jsonRows || jsonRows.length === 0) {
+    throw new Error('表格內沒有任何資料列');
+  }
+
+  let globalReportMonthYear = '';
+  let globalDepotCode = '';
+  let globalContractNo = 'M1202-19E';
+  let globalPreparedByName = 'Lee Siu Keung (15224)';
+  let globalPreparedByDate = '';
+
+  // 1. Scan metadata in first 20 rows (in case standard header exists)
+  for (let i = 0; i < Math.min(jsonRows.length, 20); i++) {
+    const rowStr = jsonRows[i].map((c) => String(c || '')).join(' ');
+
+    const detectedMonth = extractMonthYear(rowStr);
+    if (detectedMonth && !globalReportMonthYear) {
+      globalReportMonthYear = detectedMonth;
+    }
+
+    if (rowStr.includes('MTRC Depot') || rowStr.includes('MTRC Station') || rowStr.includes('MTRC OCC')) {
+      const match = rowStr.match(/(MTRC\s+(?:Depot|Station|OCC)\s*-\s*[A-Z0-9]+)/i);
+      if (match) {
+        const codeMatch = match[1].match(/-\s*([A-Z0-9]+)/i);
+        if (codeMatch) globalDepotCode = codeMatch[1].toUpperCase();
+      }
+    }
+
+    if (rowStr.includes('Contract No.') || rowStr.includes('Contract')) {
+      const match = rowStr.match(/Contract\s*(?:No\.?)?\s*:\s*([A-Z0-9\-]+)/i);
+      if (match) globalContractNo = match[1];
+    }
+
+    if (rowStr.includes('Prepared by') || rowStr.includes('Lee Siu Keung')) {
+      const matchName = rowStr.match(/(?:Name\s*&\s*Staff\s*No\.?\s*:?\s*)([^\r\n_]+)/i);
+      if (matchName) globalPreparedByName = matchName[1].trim();
+    }
+  }
+
+  // 2. Identify header row index
+  let headerRowIndex = -1;
+  for (let i = 0; i < Math.min(jsonRows.length, 30); i++) {
+    const row = jsonRows[i];
+    if (!row || row.length === 0) continue;
+    const rowCells = row.map((c) => String(c || '').trim().toUpperCase());
+    const rowStr = rowCells.join(' ');
+
+    if (
+      rowCells.includes('WONUM') ||
+      rowCells.includes('WO_WONUM') ||
+      rowCells.includes('ASSETNUM') ||
+      rowCells.includes('ASSET.ASSETNUM') ||
+      rowCells.includes('DESCRIPTION') ||
+      rowCells.includes('WORK DESCRIPTION') ||
+      rowCells.includes('PM W/O') ||
+      (rowStr.includes('WONUM') && rowStr.includes('DESCRIPTION')) ||
+      (rowStr.includes('WORKGROUP') && rowStr.includes('ASSETNUM'))
+    ) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    headerRowIndex = 0;
+  }
+
+  const rawHeader = jsonRows[headerRowIndex] || [];
+  const header = rawHeader.map((c) => String(c || '').trim().toUpperCase());
+
+  const woNumIdx = header.findIndex((h) =>
+    h === 'WONUM' ||
+    h.includes('WO_WONUM') ||
+    h.includes('WONUM') ||
+    h.includes('WO NUMBER') ||
+    h === 'W/O' ||
+    h === 'PM W/O' ||
+    h.includes('工單') ||
+    h.includes('WORK ORDER')
+  );
+
+  const assetNumIdx = header.findIndex((h) =>
+    h === 'ASSETNUM' ||
+    h.includes('ASSET.ASSETNUM') ||
+    h.includes('ASSETNUM') ||
+    h.includes('ASSET NUMBER') ||
+    h === 'ASSET'
+  );
+
+  const descIdx = header.findIndex((h) =>
+    h === 'DESCRIPTION' ||
+    h.includes('ASSET.DESCRIPTION') ||
+    h.includes('WORK DESCRIPTION') ||
+    h.includes('WORK DESC') ||
+    h.includes('DESCRIPTION') ||
+    h === 'DESC' ||
+    h.includes('項目')
+  );
+
+  const jpNumIdx = header.findIndex((h) =>
+    h === 'JPNUM' ||
+    h.includes('JP_NUM') ||
+    h.includes('JOB PLAN') ||
+    h.includes('JPNUM')
+  );
+
+  const locIdx = header.findIndex((h) =>
+    h === 'LOCATION' ||
+    h === 'LOC' ||
+    h === 'STATION' ||
+    h.includes('STATION') ||
+    h.includes('LOCATION') ||
+    h.includes('車站') ||
+    h.includes('站點') ||
+    h.includes('車廠') ||
+    h === 'DEPOT' ||
+    h === 'SITE'
+  );
+
+  const targStartIdx = header.findIndex((h) =>
+    h.includes('TARGSTART') ||
+    h.includes('START DATE') ||
+    h.includes('SCHEDSTAR') ||
+    h.includes('STARTDA') ||
+    h.includes('START')
+  );
+
+  const targCompIdx = header.findIndex((h) =>
+    h.includes('TARGCOMP') ||
+    h.includes('COMP DATE') ||
+    h.includes('SCHEDFINISH') ||
+    h.includes('COMPDAT') ||
+    h.includes('COMPLETION')
+  );
+
+  const qtyIdx = header.findIndex((h) =>
+    h.includes('QTY') ||
+    h.includes('QUANTITY') ||
+    h.includes('數量')
+  );
+
+  const mIdx = header.findIndex((h) => h === 'M' || h === '1M');
+  const m2Idx = header.findIndex((h) => h === '2M');
+  const m3Idx = header.findIndex((h) => h === '3M');
+  const m4Idx = header.findIndex((h) => h === '4M');
+  const m6Idx = header.findIndex((h) => h === '6M');
+  const yIdx = header.findIndex((h) => h === 'Y' || h === '1Y');
+  const y2Idx = header.findIndex((h) => h === '2Y');
+
+  // Determine target station: from options, or scanned header, default 'LAK'
+  let targetStation = (options.targetDepotCode || globalDepotCode || '').toUpperCase().trim();
+
+  // If not yet determined, look ahead in data rows to find the first valid station code
+  if (!targetStation) {
+    for (let r = headerRowIndex + 1; r < jsonRows.length; r++) {
+      const row = jsonRows[r];
+      if (!row || row.length === 0) continue;
+      const locVal = locIdx !== -1 ? String(row[locIdx] || '').trim() : '';
+      const assetNumVal = assetNumIdx !== -1 ? String(row[assetNumIdx] || '').trim() : '';
+      const jpNumVal = jpNumIdx !== -1 ? String(row[jpNumIdx] || '').trim() : '';
+      const descVal = descIdx !== -1 ? String(row[descIdx] || '').trim() : '';
+
+      const detected =
+        detectLocationCode(locVal) ||
+        detectLocationCode(assetNumVal) ||
+        detectLocationCode(jpNumVal) ||
+        detectLocationCode(descVal);
+
+      if (detected) {
+        targetStation = detected.toUpperCase();
+        break;
+      }
+    }
+  }
+
+  if (!targetStation) {
+    targetStation = 'LAK';
+  }
+
+  let totalWoReadCount = 0;
+  const parsedItems: MaintenanceItem[] = [];
+  const summaryMap = new Map<string, { count: number; wos: string[]; frequency: string }>();
+
+  // 3. Process data rows: STRICTLY filter by target station and enforce:
+  // - QTY = 1 forever
+  // - Station = targetStation (e.g. LAK)
+  // - PM W/O = WONUM
+  // - WORK DESCRIPTION = matched equipment description (e.g. Air Cooled Chiller)
+  // - ONLY show items present in the user's Excel (other station / unmentioned items ignored)
+  for (let r = headerRowIndex + 1; r < jsonRows.length; r++) {
+    const row = jsonRows[r];
+    if (!row || row.length === 0) continue;
+
+    const rowText = row.map((c) => String(c || '').trim()).join(' ');
+    if (
+      rowText.includes('Overall Total') ||
+      rowText.includes('Prepared by:') ||
+      rowText.startsWith('count :')
+    ) {
+      break;
+    }
+
+    const woNumVal = woNumIdx !== -1 ? String(row[woNumIdx] || '').trim() : '';
+    const assetNumVal = assetNumIdx !== -1 ? String(row[assetNumIdx] || '').trim() : '';
+    const descVal = descIdx !== -1 ? String(row[descIdx] || '').trim() : '';
+    const jpNumVal = jpNumIdx !== -1 ? String(row[jpNumIdx] || '').trim() : '';
+    const locVal = locIdx !== -1 ? String(row[locIdx] || '').trim() : '';
+    const startVal = targStartIdx !== -1 ? row[targStartIdx] : '';
+    const compVal = targCompIdx !== -1 ? row[targCompIdx] : '';
+
+    // Extract month and year from dates if not yet found
+    if (!globalReportMonthYear) {
+      const parsedMonth = extractMonthYear(startVal) || extractMonthYear(compVal);
+      if (parsedMonth) {
+        globalReportMonthYear = parsedMonth;
+      }
+    }
+
+    // Detect station code for this row
+    const rowStn = (
+      detectLocationCode(locVal) ||
+      detectLocationCode(assetNumVal) ||
+      detectLocationCode(jpNumVal) ||
+      detectLocationCode(descVal) ||
+      ''
+    ).toUpperCase();
+
+    // STRICT FILTER: If the row belongs to another station, IGNORE IT!
+    if (rowStn && rowStn !== targetStation) {
+      continue;
+    }
+
+    // Identify WO identifier: WONUM first
+    const wonum = woNumVal || assetNumVal;
+    if (!wonum && !descVal) {
+      continue;
+    }
+
+    // Equipment description: standard matched or cleaned description
+    const stdDesc =
+      matchStandardWorkDescription(descVal) ||
+      matchStandardWorkDescription(assetNumVal) ||
+      matchStandardWorkDescription(jpNumVal);
+
+    const workDescription = stdDesc || cleanWorkDescription(descVal || 'Air Cooled Chiller');
+
+    // Detect maintenance frequency (e.g. "1M; ACC..." or JPNUM "ECS-ACC-T-LAK-1M-9")
+    const detectedFreq = detectMaintenanceFrequency(`${descVal} ${jpNumVal}`);
+
+    // If explicit columns exist in row (e.g. M, 2M, 3M, etc.), override
+    if (mIdx !== -1 && row[mIdx]) detectedFreq.m = String(row[mIdx]).trim();
+    if (m2Idx !== -1 && row[m2Idx]) detectedFreq.m2 = String(row[m2Idx]).trim();
+    if (m3Idx !== -1 && row[m3Idx]) detectedFreq.m3 = String(row[m3Idx]).trim();
+    if (m4Idx !== -1 && row[m4Idx]) detectedFreq.m4 = String(row[m4Idx]).trim();
+    if (m6Idx !== -1 && row[m6Idx]) detectedFreq.m6 = String(row[m6Idx]).trim();
+    if (yIdx !== -1 && row[yIdx]) detectedFreq.y = String(row[yIdx]).trim();
+    if (y2Idx !== -1 && row[y2Idx]) detectedFreq.y2 = String(row[y2Idx]).trim();
+
+    const hasSpecificFreq = Boolean(
+      detectedFreq.m ||
+      detectedFreq.m2 ||
+      detectedFreq.m3 ||
+      detectedFreq.m4 ||
+      detectedFreq.m6 ||
+      detectedFreq.y ||
+      detectedFreq.y2
+    );
+
+    // Default to '100%' under M if no other frequency was found
+    const finalM = detectedFreq.m || (!hasSpecificFreq ? '100%' : '');
+
+    const itemIndex = parsedItems.length + 1;
+    const item: MaintenanceItem = {
+      id: `item-${itemIndex}`,
+      station: targetStation, // e.g. LAK
+      workDescription, // e.g. Air Cooled Chiller
+      pmWo: wonum, // PM W/O = WONUM
+      qty: '1', // QTY=1 forever
+      m: finalM,
+      m2: detectedFreq.m2 || '',
+      m3: detectedFreq.m3 || '',
+      m4: detectedFreq.m4 || '',
+      m6: detectedFreq.m6 || '',
+      y: detectedFreq.y || '',
+      m18: '',
+      y2: detectedFreq.y2 || '',
+      y3: '',
+      subEntries: [
+        {
+          id: `sub-${itemIndex}-1`,
+          pmWo: wonum,
+          m: finalM,
+          m2: detectedFreq.m2 || '',
+          m3: detectedFreq.m3 || '',
+          m4: detectedFreq.m4 || '',
+          m6: detectedFreq.m6 || '',
+          y: detectedFreq.y || '',
+          y2: detectedFreq.y2 || '',
+        },
+      ],
+    };
+
+    parsedItems.push(item);
+    totalWoReadCount++;
+
+    // Summary tracking
+    if (!summaryMap.has(workDescription)) {
+      summaryMap.set(workDescription, {
+        count: 0,
+        wos: [],
+        frequency: finalM ? '1M' : detectedFreq.m2 ? '2M' : detectedFreq.m3 ? '3M' : detectedFreq.m4 ? '4M' : detectedFreq.m6 ? '6M' : detectedFreq.y ? '1Y' : '1M',
+      });
+    }
+    const sumEntry = summaryMap.get(workDescription)!;
+    sumEntry.count++;
+    if (wonum) sumEntry.wos.push(wonum);
+  }
+
+  const allSummaries: MatchedItemSummary[] = Array.from(summaryMap.entries()).map(([desc, data]) => ({
+    workDescription: desc,
+    count: data.count,
+    wos: data.wos,
+    frequency: data.frequency,
+  }));
+
+  // Overall totals calculated dynamically from parsed items
+  const overallTotals = {
+    pmWoTotal: '',
+    qtyTotal: String(parsedItems.length),
+    mTotal: String(parsedItems.filter((i) => i.m && i.m.trim() !== '').length || (parsedItems.length ? '100%' : '')),
+    m2Total: String(parsedItems.filter((i) => i.m2 && i.m2.trim() !== '').length || ''),
+    m3Total: String(parsedItems.filter((i) => i.m3 && i.m3.trim() !== '').length || ''),
+    m4Total: String(parsedItems.filter((i) => i.m4 && i.m4.trim() !== '').length || ''),
+    m6Total: String(parsedItems.filter((i) => i.m6 && i.m6.trim() !== '').length || ''),
+    yTotal: String(parsedItems.filter((i) => i.y && i.y.trim() !== '').length || ''),
+    m18Total: String(parsedItems.filter((i) => i.m18 && i.m18.trim() !== '').length || ''),
+    y2Total: String(parsedItems.filter((i) => i.y2 && i.y2.trim() !== '').length || ''),
+    y3Total: String(parsedItems.filter((i) => i.y3 && i.y3.trim() !== '').length || ''),
+  };
+
+  const primaryReport: Partial<MaintenanceReportData> = {
+    depotCode: targetStation,
+    depotTitle: getLocationTitle(targetStation),
+    reportMonthYear: globalReportMonthYear || 'September - 2026',
+    contractNo: globalContractNo,
+    items: parsedItems,
+    overallTotals,
+    signatories: {
+      preparedByName: globalPreparedByName,
+      preparedByDate: globalPreparedByDate,
+      verifiedByName: '',
+      verifiedByDate: '',
+      endorsedByName: '',
+      endorsedByDate: '',
+    },
+  };
+
+  const reportsByStationMap: Record<string, Partial<MaintenanceReportData>> = {
+    [targetStation]: primaryReport,
+  };
+
+  return {
+    ...primaryReport,
+    detectedLocation: targetStation,
+    detectedMonthYear: globalReportMonthYear || 'September - 2026',
+    totalWoReadCount,
+    matchedItemsSummary: allSummaries,
+    reportsByStationMap,
+  };
+}
+
+/**
+ * Intelligent Text/TSV/Clipboard table parser
+ * Reads data copied directly from Excel, CSV, or Maximo tables
+ */
+export function parsePastedText(
+  text: string,
+  options: ParseExcelOptions = {}
+): ParsedTableResult {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (lines.length === 0) {
+    throw new Error('貼上的內容為空，請複製 Excel 或 Maximo 表格資料後再試');
+  }
+
+  const hasTabs = lines.some((l) => l.includes('\t'));
+  const hasCommas = !hasTabs && lines.some((l) => l.includes(','));
+
+  const jsonRows: any[][] = lines.map((line) => {
+    if (hasTabs) {
+      return line.split('\t').map((c) => c.trim());
+    } else if (hasCommas) {
+      return line.split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+    } else if (line.includes('|')) {
+      return line.split('|').map((c) => c.trim()).filter((c) => c !== '');
+    } else {
+      return line.split(/\s{2,}/).map((c) => c.trim());
+    }
+  });
+
+  return parseGenericTableRows(jsonRows, options);
+}
+
 /**
  * Intelligent Excel file parser for MTR Maintenance List
  */
 export async function parseExcelFile(
   file: File,
   options: ParseExcelOptions = {}
-): Promise<Partial<MaintenanceReportData>> {
-  const { targetDepotCode = 'TWD', filterByDepot = true } = options;
-
+): Promise<ParsedTableResult> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -408,339 +995,8 @@ export async function parseExcelFile(
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-        let depotTitle = getLocationTitle(targetDepotCode);
-        let depotCode = targetDepotCode;
-        let reportMonthYear = 'July - 2026';
-        let contractNo = 'M1202-19E';
-        let preparedByName = 'Lee Siu Keung (15224)';
-        let preparedByDate = '';
-        let verifiedByName = '';
-        let verifiedByDate = '';
-        let endorsedByName = '';
-        let endorsedByDate = '';
-
-        // Scanning header meta fields (Depot, Station, Month, Contract No, Date Range)
-        jsonRows.forEach((row) => {
-          const rowStr = row.map((cell) => String(cell || '')).join(' ');
-
-          if (
-            rowStr.includes('MTRC Depot') ||
-            rowStr.includes('MTRC Station') ||
-            rowStr.includes('MTRC OCC') ||
-            rowStr.includes('Depot') ||
-            rowStr.includes('Station')
-          ) {
-            const match = rowStr.match(/(MTRC\s+(?:Depot|Station|OCC)\s*-\s*[A-Z0-9]+|(?:Depot|Station)\s*-\s*[A-Z0-9]+)/i);
-            if (match) {
-              depotTitle = match[0];
-              const codeMatch = depotTitle.match(/-\s*([A-Z0-9]+)/i);
-              if (codeMatch) depotCode = codeMatch[1].toUpperCase();
-            }
-          }
-
-          if (rowStr.includes('PM PERFORMANCE BREAKDOWN') || rowStr.includes('BREAKDOWN in')) {
-            const match = rowStr.match(/in\s+([A-Za-z]+)\s*-\s*(\d{4})/i);
-            if (match) {
-              reportMonthYear = `${match[1]} - ${match[2]}`;
-            }
-          }
-
-          // Extract date range from FROM : YYYY-MM-DD or TO : YYYY-MM-DD
-          if (rowStr.includes('FROM :') || rowStr.includes('FROM:') || rowStr.includes('TO :') || rowStr.includes('TO:')) {
-            const dateMatch = rowStr.match(/(\d{4})-(\d{2})-\d{2}/);
-            if (dateMatch) {
-              const year = dateMatch[1];
-              const monthNum = parseInt(dateMatch[2], 10);
-              const months = [
-                'January',
-                'February',
-                'March',
-                'April',
-                'May',
-                'June',
-                'July',
-                'August',
-                'September',
-                'October',
-                'November',
-                'December',
-              ];
-              if (monthNum >= 1 && monthNum <= 12) {
-                reportMonthYear = `${months[monthNum - 1]} - ${year}`;
-              }
-            }
-          }
-
-          if (rowStr.includes('Contract No.') || rowStr.includes('Contract')) {
-            const match = rowStr.match(/Contract\s*(?:No\.?)?\s*:\s*([A-Z0-9\-]+)/i);
-            if (match) {
-              contractNo = match[1];
-            }
-          }
-
-          if (rowStr.includes('Lee Siu Keung') || rowStr.includes('Prepared by')) {
-            const matchName = rowStr.match(/(?:Name\s*&\s*Staff\s*No\.?\s*:?\s*)([^\r\n_]+)/i);
-            if (matchName) {
-              preparedByName = matchName[1].trim();
-            }
-          }
-        });
-
-        // Build lookup map from existingItems if provided
-        const existingQtyMap = new Map<string, string>();
-        if (options.existingItems && Array.isArray(options.existingItems)) {
-          options.existingItems.forEach((item) => {
-            if (item.workDescription && item.qty) {
-              existingQtyMap.set(item.workDescription, item.qty);
-            }
-          });
-        }
-
-        // Initialize base 21 standard items map for MTR
-        const itemsMap = new Map<string, MaintenanceItem>();
-        STANDARD_MTR_ITEMS.forEach((stdDesc, idx) => {
-          const preservedQty = existingQtyMap.get(stdDesc) || DEFAULT_QTY_MAP[stdDesc] || '1';
-          itemsMap.set(stdDesc, {
-            id: `item-${idx + 1}`,
-            station: depotCode || targetDepotCode,
-            workDescription: stdDesc,
-            pmWo: '',
-            qty: preservedQty,
-            m: '',
-            m2: '',
-            m3: '',
-            m4: '',
-            m6: '',
-            y: '',
-            y2: '',
-          });
-        });
-
-        const customItems: MaintenanceItem[] = [];
-
-        // Scan table headers first to detect column layout (Maximo export vs Standard Report)
-        let headerRowIndex = -1;
-        for (let i = 0; i < jsonRows.length; i++) {
-          const rowStr = jsonRows[i].map((c) => String(c || '').trim().toUpperCase()).join(' ');
-          if (
-            rowStr.includes('WO_WONUM') ||
-            rowStr.includes('WONUM') ||
-            rowStr.includes('ASSET.DESCRIPTION') ||
-            rowStr.includes('ASSET.ASSETNUM') ||
-            rowStr.includes('STATION') ||
-            rowStr.includes('WORK DESCRIPTION') ||
-            rowStr.includes('PM W/O')
-          ) {
-            headerRowIndex = i;
-            break;
-          }
-        }
-
-        if (headerRowIndex !== -1) {
-          const header = jsonRows[headerRowIndex].map((c) => String(c || '').trim().toUpperCase());
-
-          const woNumIdx = header.findIndex((h) => h.includes('WO_WONUM') || h.includes('WONUM') || h.includes('WO NUMBER'));
-          const assetNumIdx = header.findIndex((h) => h.includes('ASSET.ASSETNUM') || h.includes('ASSETNUM'));
-          const assetDescIdx = header.findIndex(
-            (h) => h.includes('ASSET.DESCRIPTION') || h.includes('DESCRIPTION') || h.includes('WORK DESCRIPTION') || h.includes('WORK') || h.includes('項目')
-          );
-          const woIdx = header.findIndex((h) => h === 'PM W/O' || h === 'W/O' || h.includes('工單'));
-          const stationIdx = header.findIndex((h) => h.includes('STATION') || h.includes('車站'));
-          const qtyIdx = header.findIndex((h) => h.includes('QTY') || h.includes('數量'));
-
-          const mIdx = header.findIndex((h) => h === 'M');
-          const m2Idx = header.findIndex((h) => h === '2M');
-          const m3Idx = header.findIndex((h) => h === '3M');
-          const m4Idx = header.findIndex((h) => h === '4M');
-          const m6Idx = header.findIndex((h) => h === '6M');
-          const yIdx = header.findIndex((h) => h === 'Y');
-          const y2Idx = header.findIndex((h) => h === '2Y');
-
-          for (let r = headerRowIndex + 1; r < jsonRows.length; r++) {
-            const row = jsonRows[r];
-            if (!row || row.length === 0) continue;
-
-            const rowText = row.map((c) => String(c || '').trim()).join(' ');
-            if (rowText.includes('Overall Total') || rowText.includes('Prepared by') || rowText.startsWith('count :')) break;
-
-            const woNumVal = woNumIdx !== -1 ? String(row[woNumIdx] || '').trim() : '';
-            const assetNumVal = assetNumIdx !== -1 ? String(row[assetNumIdx] || '').trim() : '';
-            const assetDescVal = assetDescIdx !== -1 ? String(row[assetDescIdx] || '').trim() : '';
-            const pmWoVal = woIdx !== -1 ? String(row[woIdx] || '').trim() : '';
-            const rawDesc = assetDescIdx !== -1 ? assetDescVal : (assetNumIdx !== -1 ? assetNumVal : String(row[1] || '').trim());
-            const station = stationIdx !== -1 ? String(row[stationIdx] || '').trim() : depotCode;
-            const qty = qtyIdx !== -1 ? String(row[qtyIdx] || '').trim() : '';
-
-            // Filter: If filterByDepot is enabled, check if the row corresponds to the target station/depot
-            if (filterByDepot) {
-              const depotKeyword = (targetDepotCode || 'TWD').toUpperCase();
-              const matchesKeyword =
-                (assetDescVal && assetDescVal.toUpperCase().includes(depotKeyword)) ||
-                (assetNumVal && assetNumVal.toUpperCase().includes(depotKeyword)) ||
-                (station && station.toUpperCase().includes(depotKeyword)) ||
-                (rowText && rowText.toUpperCase().includes(depotKeyword));
-
-              if ((assetDescVal || assetNumVal) && !matchesKeyword) {
-                continue;
-              }
-            }
-
-            // Preferred WO identifier: WO_WONUM (e.g., 5001760193), fallback to PM W/O or asset description
-            const woToUse = woNumVal || pmWoVal || assetDescVal || assetNumVal;
-
-            if (woToUse || rawDesc) {
-              const stdDesc =
-                matchStandardWorkDescription(assetNumVal) ||
-                matchStandardWorkDescription(assetDescVal) ||
-                matchStandardWorkDescription(rawDesc) ||
-                matchStandardWorkDescription(woToUse);
-
-              if (stdDesc && itemsMap.has(stdDesc)) {
-                const target = itemsMap.get(stdDesc)!;
-
-                // Place WO_WONUM into PM W/O column (newline separated for multi-line display)
-                if (woToUse) {
-                  if (!target.pmWo) {
-                    target.pmWo = woToUse;
-                  } else {
-                    const existingWos = target.pmWo.split(/[\n,]/).map((s) => s.trim());
-                    if (!existingWos.includes(woToUse)) {
-                      target.pmWo += `\n${woToUse}`;
-                    }
-                  }
-                }
-
-                if (qty) target.qty = qty;
-                if (station) target.station = station;
-
-                // Set frequencies if provided in table
-                if (mIdx !== -1 && row[mIdx]) target.m = String(row[mIdx]).trim();
-                if (m2Idx !== -1 && row[m2Idx]) target.m2 = String(row[m2Idx]).trim();
-                if (m3Idx !== -1 && row[m3Idx]) target.m3 = String(row[m3Idx]).trim();
-                if (m4Idx !== -1 && row[m4Idx]) target.m4 = String(row[m4Idx]).trim();
-                if (m6Idx !== -1 && row[m6Idx]) target.m6 = String(row[m6Idx]).trim();
-                if (yIdx !== -1 && row[yIdx]) target.y = String(row[yIdx]).trim();
-                if (y2Idx !== -1 && row[y2Idx]) target.y2 = String(row[y2Idx]).trim();
-              } else if (rawDesc) {
-                // Custom item
-                customItems.push({
-                  id: `custom-${customItems.length + 1}`,
-                  station: station || depotCode,
-                  workDescription: rawDesc,
-                  pmWo: woToUse,
-                  qty: qty || '1',
-                  m: mIdx !== -1 ? String(row[mIdx] || '').trim() : '100%',
-                  m2: m2Idx !== -1 ? String(row[m2Idx] || '').trim() : '',
-                  m3: m3Idx !== -1 ? String(row[m3Idx] || '').trim() : '',
-                  m4: m4Idx !== -1 ? String(row[m4Idx] || '').trim() : '',
-                  m6: m6Idx !== -1 ? String(row[m6Idx] || '').trim() : '',
-                  y: yIdx !== -1 ? String(row[yIdx] || '').trim() : '',
-                  y2: y2Idx !== -1 ? String(row[y2Idx] || '').trim() : '',
-                });
-              }
-            }
-          }
-        } else {
-          // Fallback cell scanning mode
-          jsonRows.forEach((row) => {
-            if (!row || row.length === 0) return;
-            const rowStr = row.map((c) => String(c || '').trim()).join(' ');
-
-            if (
-              rowStr.includes('PM PERFORMANCE BREAKDOWN') ||
-              rowStr.includes('Overall Total') ||
-              rowStr.includes('Prepared by')
-            ) {
-              return;
-            }
-
-            // Look for WO number or asset description cell
-            let foundWo = '';
-            let foundAssetDesc = '';
-
-            row.forEach((cell) => {
-              const cellVal = String(cell || '').trim();
-              if (!cellVal) return;
-
-              if (/^\d{6,10}$/.test(cellVal) || cellVal.startsWith('WO')) {
-                foundWo = cellVal;
-              } else if (
-                cellVal.toUpperCase().startsWith('MR') ||
-                cellVal.toUpperCase().includes('TWD-') ||
-                cellVal.toUpperCase().includes('ECS-')
-              ) {
-                foundAssetDesc = cellVal;
-              }
-            });
-
-            if (foundAssetDesc || foundWo) {
-              if (
-                filterByDepot &&
-                foundAssetDesc &&
-                !foundAssetDesc.toUpperCase().includes((targetDepotCode || 'TWD').toUpperCase())
-              ) {
-                return;
-              }
-
-              const matchedDesc =
-                matchStandardWorkDescription(foundAssetDesc) ||
-                matchStandardWorkDescription(foundWo) ||
-                (row[1] ? matchStandardWorkDescription(String(row[1])) : '');
-
-              if (matchedDesc && itemsMap.has(matchedDesc)) {
-                const existing = itemsMap.get(matchedDesc)!;
-                const woToUse = foundWo || foundAssetDesc;
-
-                if (!existing.pmWo) {
-                  existing.pmWo = woToUse;
-                } else if (!existing.pmWo.includes(woToUse)) {
-                  existing.pmWo += `, ${woToUse}`;
-                }
-
-                const qtyCell = row.find((c) => /^\d+(\s*lot)?$/i.test(String(c).trim()));
-                if (qtyCell && !existing.qty) {
-                  existing.qty = String(qtyCell).trim();
-                }
-              }
-            }
-          });
-        }
-
-        // Auto-assign default frequencies for items that have PM W/O populated but no frequency value
-        itemsMap.forEach((item, desc) => {
-          if (item.pmWo && !item.m && !item.m2 && !item.m3 && !item.m4 && !item.m6 && !item.y && !item.y2) {
-            if (desc === 'Air Cooled Chiller') {
-              item.m2 = '100%';
-            } else if (desc === 'Chem. Dosing Unit' || desc === 'Presurization Unit') {
-              item.m3 = '100%';
-            } else if (desc === 'Differential By-pass Valve & Control') {
-              item.m4 = '100%';
-            } else if (desc === 'Motor Control Centre') {
-              item.m6 = '100%';
-            } else {
-              item.m = '100%';
-            }
-          }
-        });
-
-        // Final list of items: 21 standard items + any custom items
-        const finalItems = Array.from(itemsMap.values()).concat(customItems);
-
-        resolve({
-          depotTitle,
-          depotCode,
-          reportMonthYear,
-          contractNo,
-          items: finalItems,
-          signatories: {
-            preparedByName,
-            preparedByDate,
-            verifiedByName,
-            verifiedByDate,
-            endorsedByName,
-            endorsedByDate,
-          },
-        });
+        const result = parseGenericTableRows(jsonRows, options);
+        resolve(result);
       } catch (err) {
         reject(err);
       }
