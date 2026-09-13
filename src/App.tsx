@@ -39,11 +39,11 @@ const STORAGE_KEY_FINETUNE = 'mtr_pm_finetune_settings';
 const STORAGE_KEY_ARCHIVES = 'mtr_pm_archives_history';
 
 export default function App() {
-  // Active Station Tab - default to LAK
+  // Active Station/Depot Tab - default to LAK
   const [currentDepot, setCurrentDepot] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_DEPOT);
-      if (saved && !['TWD', 'TMD', 'SHD'].includes(saved.toUpperCase()) && getLocationByCode(saved)) {
+      if (saved && getLocationByCode(saved)) {
         return saved;
       }
       return 'LAK';
@@ -52,7 +52,7 @@ export default function App() {
     }
   });
 
-  // Reports Map by Station
+  // Reports Map by Station/Depot
   const [reportsByDepot, setReportsByDepot] = useState<Record<string, MaintenanceReportData>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
@@ -61,10 +61,6 @@ export default function App() {
       if (saved) {
         try {
           parsedMap = JSON.parse(saved) || {};
-          // Delete old default presets TWD, TMD, SHD
-          delete parsedMap['TWD'];
-          delete parsedMap['TMD'];
-          delete parsedMap['SHD'];
         } catch (e) {
           console.error('Failed to parse saved reports map', e);
         }
@@ -490,8 +486,15 @@ export default function App() {
                     ))}
                   </optgroup>
                 )}
-                <optgroup label={`港鐵車站與設施 (${MTR_STATIONS_LIST.length})`}>
+                <optgroup label={`選擇站點 (${MTR_STATIONS_LIST.length})`}>
                   {MTR_STATIONS_LIST.map((loc) => (
+                    <option key={loc.code} value={loc.code}>
+                      {loc.code} - {loc.nameZh} ({loc.nameEn})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label={`車廠 (${MTR_DEPOTS_LIST.length})`}>
+                  {MTR_DEPOTS_LIST.map((loc) => (
                     <option key={loc.code} value={loc.code}>
                       {loc.code} - {loc.nameZh} ({loc.nameEn})
                     </option>

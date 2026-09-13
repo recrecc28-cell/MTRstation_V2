@@ -43,7 +43,7 @@ export const RegionSelector: React.FC<Props> = ({
   onClose,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'imported' | 'station'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'imported' | 'station' | 'depot'>('all');
 
   const importedLocationsCount = useMemo(() => {
     return ALL_MTR_LOCATIONS.filter((loc) => (woStats?.[loc.code]?.total || 0) > 0).length;
@@ -55,6 +55,8 @@ export const RegionSelector: React.FC<Props> = ({
       list = ALL_MTR_LOCATIONS.filter((loc) => (woStats?.[loc.code]?.total || 0) > 0);
     } else if (activeTab === 'station') {
       list = MTR_STATIONS_LIST;
+    } else if (activeTab === 'depot') {
+      list = MTR_DEPOTS_LIST;
     }
 
     if (!searchQuery.trim()) return list;
@@ -72,6 +74,7 @@ export const RegionSelector: React.FC<Props> = ({
 
   const totalLocationsCount = ALL_MTR_LOCATIONS.length;
   const stationCount = MTR_STATIONS_LIST.length;
+  const depotCount = MTR_DEPOTS_LIST.length;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-2.5 no-print">
@@ -80,7 +83,7 @@ export const RegionSelector: React.FC<Props> = ({
         <div className="flex items-center gap-1.5">
           <Train className="w-4 h-4 text-emerald-600" />
           <h3 className="text-xs font-bold text-slate-800">
-            選擇站點 ({totalLocationsCount})
+            選擇站點 / 車廠 ({totalLocationsCount})
           </h3>
         </div>
         {onClose && (
@@ -131,6 +134,17 @@ export const RegionSelector: React.FC<Props> = ({
           }`}
         >
           車站 ({stationCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('depot')}
+          className={`flex-1 py-1 px-1.5 rounded font-medium text-center transition-all cursor-pointer ${
+            activeTab === 'depot'
+              ? 'bg-white text-emerald-700 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          車廠 ({depotCount})
         </button>
       </div>
 

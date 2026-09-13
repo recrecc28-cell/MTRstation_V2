@@ -282,14 +282,21 @@ export const ExcelUploadModal: React.FC<Props> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
                 <Train className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="font-bold text-slate-700">目標車站:</span>
+                <span className="font-bold text-slate-700">目標站點 / 車廠:</span>
                 <select
                   value={targetDepotCode}
                   onChange={(e) => setTargetDepotCode(e.target.value)}
                   className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-emerald-700 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <optgroup label="車站與設施">
+                  <optgroup label="選擇站點">
                     {MTR_STATIONS_LIST.map((loc) => (
+                      <option key={loc.code} value={loc.code}>
+                        {loc.code} - {loc.nameZh} ({loc.nameEn})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="車廠">
+                    {MTR_DEPOTS_LIST.map((loc) => (
                       <option key={loc.code} value={loc.code}>
                         {loc.code} - {loc.nameZh} ({loc.nameEn})
                       </option>

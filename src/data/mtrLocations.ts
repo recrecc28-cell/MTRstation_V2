@@ -10,6 +10,7 @@ export interface MTRLocation {
   description: string;
 }
 
+// 選擇站點：名字排列由 A-Z (Sorted alphabetically by Code / English name)
 export const MTR_STATIONS_LIST: MTRLocation[] = [
   {
     code: 'AIR',
@@ -37,6 +38,33 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
     type: 'station',
     line: '港島綫 / 荃灣綫 / 香港站通道',
     description: 'Central Station 月度保養報告',
+  },
+  {
+    code: 'CRP',
+    nameZh: '紅磡貨運場 / 車站',
+    nameEn: 'Freight Yard / Station - CRP',
+    title: 'MTRC Station - CRP',
+    type: 'station',
+    line: '東鐵綫 / 屯馬綫',
+    description: 'CRP Station 月度保養報告',
+  },
+  {
+    code: 'DIH',
+    nameZh: '鑽石山站',
+    nameEn: 'Diamond Hill Station',
+    title: 'MTRC Station - DIH',
+    type: 'station',
+    line: '屯馬綫 / 觀塘綫',
+    description: 'Diamond Hill Station 月度保養報告',
+  },
+  {
+    code: 'ETS',
+    nameZh: '尖東站',
+    nameEn: 'East Tsim Sha Tsui Station',
+    title: 'MTRC Station - ETS',
+    type: 'station',
+    line: '屯馬綫 (TML)',
+    description: 'East Tsim Sha Tsui Station 月度保養報告',
   },
   {
     code: 'HIC',
@@ -82,6 +110,15 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
     type: 'station',
     line: '東涌綫 / 荃灣綫',
     description: 'Lai King Station 月度保養報告',
+  },
+  {
+    code: 'MEF',
+    nameZh: '美孚站',
+    nameEn: 'Mei Foo Station',
+    title: 'MTRC Station - MEF',
+    type: 'station',
+    line: '荃灣綫 / 屯馬綫',
+    description: 'Mei Foo Station 月度保養報告',
   },
   {
     code: 'NIC',
@@ -164,48 +201,42 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
     line: '觀塘綫 / 將軍澳綫',
     description: 'Yau Tong Station 月度保養報告',
   },
+];
+
+// 車廠：名字排列由 A-Z (Sorted alphabetically by Code / English name: SHD -> TMD -> TWD)
+export const MTR_DEPOTS_LIST: MTRLocation[] = [
   {
-    code: 'CRP',
-    nameZh: '紅磡貨運場 / 車站',
-    nameEn: 'Freight Yard / Station - CRP',
-    title: 'MTRC Station - CRP',
-    type: 'station',
-    line: '東鐵綫 / 屯馬綫',
-    description: 'CRP Station 月度保養報告',
+    code: 'SHD',
+    nameZh: '小濠灣車廠',
+    nameEn: 'Siu Ho Wan Depot',
+    title: 'MTRC Depot - SHD',
+    type: 'depot',
+    line: '東涌綫 / 機場快綫',
+    description: 'Siu Ho Wan Depot 保養報告',
   },
   {
-    code: 'DIH',
-    nameZh: '鑽石山站',
-    nameEn: 'Diamond Hill Station',
-    title: 'MTRC Station - DIH',
-    type: 'station',
-    line: '屯馬綫 / 觀塘綫',
-    description: 'Diamond Hill Station 月度保養報告',
+    code: 'TMD',
+    nameZh: '屯門車廠',
+    nameEn: 'Tuen Mun Depot',
+    title: 'MTRC Depot - TMD',
+    type: 'depot',
+    line: '輕鐵 / 屯馬綫',
+    description: 'Tuen Mun Depot 保養報告',
   },
   {
-    code: 'ETS',
-    nameZh: '尖東站',
-    nameEn: 'East Tsim Sha Tsui Station',
-    title: 'MTRC Station - ETS',
-    type: 'station',
-    line: '屯馬綫 (TML)',
-    description: 'East Tsim Sha Tsui Station 月度保養報告',
-  },
-  {
-    code: 'MEF',
-    nameZh: '美孚站',
-    nameEn: 'Mei Foo Station',
-    title: 'MTRC Station - MEF',
-    type: 'station',
-    line: '荃灣綫 / 屯馬綫',
-    description: 'Mei Foo Station 月度保養報告',
+    code: 'TWD',
+    nameZh: '荃灣車廠',
+    nameEn: 'Tsuen Wan Depot',
+    title: 'MTRC Depot - TWD',
+    type: 'depot',
+    line: '荃灣綫 (TWL)',
+    description: 'Tsuen Wan Depot 保養報告',
   },
 ];
 
-export const MTR_DEPOTS_LIST: MTRLocation[] = [];
-
 export const ALL_MTR_LOCATIONS: MTRLocation[] = [
   ...MTR_STATIONS_LIST,
+  ...MTR_DEPOTS_LIST,
 ];
 
 export const getLocationByCode = (code: string): MTRLocation | undefined => {
