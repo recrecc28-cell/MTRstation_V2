@@ -34,6 +34,12 @@ export const STANDARD_MTR_ITEMS = [
   'Sensor',
   'Flexible Connection',
   'Pipework Insulation',
+  'Electro-thermal linked fire damper',
+  'Fusible linked fire damper',
+  'Motorised Operated Damper',
+  'Smoke Extraction System',
+  'Smoke Extraction Fan',
+  'VAC System',
 ];
 
 /**
@@ -452,8 +458,174 @@ export function matchStandardWorkDescription(rawText: string): string {
     return 'Sea Water Intake Screen';
   }
 
+  // Electro-thermal linked fire damper (ETD)
+  if (
+    text.includes('ELECTRO-THERMAL') ||
+    text.includes('ELECTRO THERMAL') ||
+    text.includes('ECS-ETD') ||
+    text.includes('-ETD-') ||
+    text.endsWith('-ETD') ||
+    text.includes('ETD-ALL') ||
+    /\bETD\b/.test(text)
+  ) {
+    return 'Electro-thermal linked fire damper';
+  }
+
+  // Fusible linked fire damper (FLD)
+  if (
+    text.includes('FUSIBLE LINKED') ||
+    text.includes('FUSIBLE') ||
+    text.includes('ECS-FLD') ||
+    text.includes('-FLD-') ||
+    text.endsWith('-FLD') ||
+    text.includes('FLD-ALL') ||
+    /\bFLD\b/.test(text)
+  ) {
+    return 'Fusible linked fire damper';
+  }
+
+  // Motorised Operated Damper (MOD)
+  if (
+    text.includes('MOTORISED OPERATED DAMPER') ||
+    text.includes('MOTORIZED OPERATED DAMPER') ||
+    text.includes('ECS-MOD') ||
+    text.includes('-MOD-') ||
+    text.endsWith('-MOD') ||
+    text.includes('MOD-ALL') ||
+    /\bMOD\b/.test(text)
+  ) {
+    return 'Motorised Operated Damper';
+  }
+
+  // Smoke Extraction System & Smoke Extraction Fan (SES / SEF)
+  if (
+    text.includes('SMOKE EXTRACTION SYSTEM') ||
+    text.includes('ECS-SES') ||
+    text.includes('-SES-') ||
+    text.endsWith('-SES') ||
+    /\bSES\b/.test(text)
+  ) {
+    return 'Smoke Extraction System';
+  }
+  if (
+    text.includes('SEF MAINTENANCE') ||
+    text.includes('SMOKE EXTRACTION FAN') ||
+    text.includes('ECS-SEF') ||
+    text.includes('-SEF-') ||
+    text.endsWith('-SEF') ||
+    /\bSEF\b/.test(text)
+  ) {
+    return 'Smoke Extraction Fan';
+  }
+
+  // VAC System (VAC)
+  if (
+    text.includes('VAC SYSTEM') ||
+    text.includes('ECS-VAC') ||
+    text.includes('-VAC-') ||
+    text.endsWith('-VAC') ||
+    text.includes('VAC-ALL') ||
+    /\bVAC\b/.test(text)
+  ) {
+    return 'VAC System';
+  }
+
   // If no standard pattern matched, return empty string (let caller fallback to cleaned text)
   return '';
+}
+
+/**
+ * Extracts the meaningful maintenance work description from ASSET.DESCRIPTION column
+ * User rule: "read inside the meaning work, belong to MTR job maintenance,
+ * such as MR HTD ECS-AIR HANDLING UNIT ALL, means AIR HANDLING UNIT,
+ * MR HTD ECS-Electro-thermal linked fire damper - ALL, means Electro-thermal linked fire damper, 如此類推"
+ */
+export function extractMeaningfulAssetWork(rawText: string): string {
+  if (!rawText) return '';
+  const trimmed = rawText.trim();
+  if (!trimmed) return '';
+
+  // 1. If there's a semicolon, inspect the split parts:
+  // e.g. "MR HTD ECS-CWM-COT-ALL; COOLING TOWER" -> "COOLING TOWER"
+  // e.g. "MR-CWD-DBF; DISPOSAL BAG FILTER" -> "DISPOSAL BAG FILTER"
+  // e.g. "MR-TWD WASHABLE PANEL FILTER ;TWD ;ALL" -> "WASHABLE PANEL FILTER"
+  if (trimmed.includes(';')) {
+    const parts = trimmed.split(';').map((p) => p.trim()).filter(Boolean);
+    // Check if any part after the first one is a meaningful work phrase
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      const upperPart = part.toUpperCase();
+      // Ignore parts that are just station codes or 'ALL' or 'COP' or short numbers
+      if (
+        upperPart === 'ALL' ||
+        upperPart === 'COP' ||
+        upperPart === 'TH' ||
+        upperPart === 'NTH' ||
+        /^[A-Z0-9]{2,4}$/.test(upperPart)
+      ) {
+        continue;
+      }
+      const cleanedPart = cleanAssetWorkString(part);
+      if (cleanedPart && cleanedPart.length > 2) {
+        return cleanedPart;
+      }
+    }
+
+    // If subsequent parts were only tags/station codes, inspect the first part
+    const firstCleaned = cleanAssetWorkString(parts[0]);
+    if (firstCleaned && firstCleaned.length > 2) {
+      return firstCleaned;
+    }
+  }
+
+  // 2. Direct string cleaning (without semicolon)
+  const cleaned = cleanAssetWorkString(trimmed);
+  if (cleaned) {
+    return cleaned;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Helper to strip MR prefixes, depot codes, ECS subsystems, acronym tags, and '- ALL' suffixes
+ */
+function cleanAssetWorkString(str: string): string {
+  if (!str) return '';
+
+  let res = str.trim();
+
+  // Strip leading prefixes:
+  // e.g. "MR HTD ECS-", "MR TAD ECS/", "MR TPB ECS-", "MR PHD ECS-", "MR-CWD-", "MR-KBD-", "MR-SHD-", "MR-TWD ", "MR-TWD-"
+  res = res
+    .replace(/^MR[\s\-]+[A-Z0-9]{3,4}[\s\-]+(?:ECS[\s\-/]+)?/i, '')
+    .replace(/^MR[\s\-]+(?:ECS[\s\-/]+)?/i, '')
+    .replace(/^MR-[A-Z0-9]{3,4}-/i, '')
+    .replace(/^MR\s+[A-Z0-9]{3,4}\s+/i, '')
+    .replace(/^MR[\s\-]+/i, '');
+
+  // Strip subsystem prefix if still present (e.g. "ECS-", "ECS/")
+  res = res.replace(/^ECS[\s\-/]+/i, '');
+
+  // Strip trailing station + ALL suffixes if separated by semicolons (e.g. ";TWD ;ALL" or "; TWD ; ALL")
+  res = res.replace(/;\s*[A-Z0-9]{3,4}\s*;\s*ALL\s*$/i, '');
+  res = res.replace(/;\s*[A-Z0-9]{3,4}\s+ALL\s*$/i, '');
+
+  // Strip trailing suffixes:
+  // e.g. " - ALL", " ;ALL", "-ALL", " ALL"
+  res = res
+    .replace(/[\s\-–—;,]+ALL\s*$/i, '')
+    .replace(/\s+ALL\s*$/i, '')
+    .replace(/[\s\-–—;,]+$/i, '')
+    .trim();
+
+  // If what remains is purely an acronym code (e.g. "ACC-1", "ACC", "WPF"), match standard item
+  if (/^[A-Z0-9]{2,6}(?:[-_]\d+)?$/i.test(res)) {
+    const std = matchStandardWorkDescription(res);
+    if (std) return std;
+  }
+
+  return res;
 }
 
 /**
@@ -512,6 +684,15 @@ export function detectLocationCode(rawText: string): string | null {
     return candidate;
   }
 
+  // 0a. Check "MR <DEPOT/STATION> " or "MR-<DEPOT/STATION>-" in ASSET.DESCRIPTION (e.g. MR HTD ECS-..., MR-CWD-..., MR-KBD-..., MR-TWD...)
+  const mrMatch = upper.match(/^MR[-\s]+([A-Z0-9]{3})[-_\s]/);
+  if (mrMatch) {
+    const candidate = mrMatch[1];
+    const matchedLoc = ALL_MTR_LOCATIONS.find((loc) => loc.code === candidate);
+    if (matchedLoc) return matchedLoc.code;
+    return candidate;
+  }
+
   // 1. Exact match
   const exact = ALL_MTR_LOCATIONS.find((loc) => loc.code === upper);
   if (exact) return exact.code;
@@ -537,9 +718,14 @@ export function detectLocationCode(rawText: string): string | null {
 
 /**
  * Intelligent Maintenance Frequency detector
- * Detects 1M, 2M, 3M, 4M, 6M, Y, 2Y from descriptions (e.g., "1M; ACC; Air Cooled Chiller; by Contractor" or "ECS-ACC-T-LAK-1M-9")
+ * User rule: "1) JOBPLAN.DESCRIPTION column - it belong to ECS read the 1M, 3M, 4M, 6, 1Y, 18M, 2Y, 3Y"
+ * Detects 1M, 2M, 3M, 4M, 6M (or 6), 1Y (or Y), 18M, 2Y, 3Y
  */
-export function detectMaintenanceFrequency(text: string): {
+export function detectMaintenanceFrequency(
+  text: string,
+  jobPlanDesc?: string,
+  jpNum?: string
+): {
   m?: string;
   m2?: string;
   m3?: string;
@@ -550,7 +736,6 @@ export function detectMaintenanceFrequency(text: string): {
   y2?: string;
   y3?: string;
 } {
-  const upper = (text || '').toUpperCase();
   const res: {
     m?: string;
     m2?: string;
@@ -563,25 +748,98 @@ export function detectMaintenanceFrequency(text: string): {
     y3?: string;
   } = {};
 
-  if (/\b3Y\b|36M|-3Y-|-36M-|\b3-?YEAR\b/i.test(upper)) {
+  const upperJpDesc = (jobPlanDesc || '').toUpperCase().trim();
+  const upperJpNum = (jpNum || '').toUpperCase().trim();
+  const upperCombined = `${upperJpDesc} ${upperJpNum} ${(text || '').toUpperCase()}`.trim();
+
+  // 1. Primary priority: Check JOBPLAN.DESCRIPTION specifically
+  // Examples:
+  // "ECS CONTRACT OUT PM JOB; RYODEN; (1M CHK)" -> 1M
+  // "ECS CONTRACT OUT PM JOB; RYODEN; (4M CHK)" -> 4M
+  // "ECS CONTRACT OUT PM JOB; RYODEN; (6M CHK)" or "(6 CHK)" -> 6M
+  // "ECS VENTILATION SYSTEM CONTRACT OUT PM JOB; REC; (1Y CHK)" -> 1Y
+  // "ECS CONTRACT OUT PM JOB; RYODEN; (18M CHK)" -> 18M
+  // "ECS CONTRACT OUT PM JOB; RYODEN; (2Y CHK)" -> 2Y
+  // "ECS CONTRACT OUT PM JOB; RYODEN; (3Y CHK)" -> 3Y
+  if (upperJpDesc) {
+    // Parenthesized frequency extraction
+    const parenMatch = upperJpDesc.match(/\(\s*(1M|2M|3M|4M|6M|6|1Y|Y|18M|2Y|3Y|1W)\s*(?:CHK)?/i);
+    if (parenMatch) {
+      const code = parenMatch[1].toUpperCase();
+      if (code === '3Y') { res.y3 = '100%'; return res; }
+      if (code === '2Y') { res.y2 = '100%'; return res; }
+      if (code === '18M') { res.m18 = '100%'; return res; }
+      if (code === '1Y' || code === 'Y') { res.y = '100%'; return res; }
+      if (code === '6M' || code === '6') { res.m6 = '100%'; return res; }
+      if (code === '4M') { res.m4 = '100%'; return res; }
+      if (code === '3M') { res.m3 = '100%'; return res; }
+      if (code === '2M') { res.m2 = '100%'; return res; }
+      if (code === '1M' || code === '1W') { res.m = '100%'; return res; }
+    }
+
+    // Direct token search in JOBPLAN.DESCRIPTION
+    if (/\b3Y\b|36M|-3Y-|-36M-|\b3-?YEAR\b/i.test(upperJpDesc)) {
+      res.y3 = '100%'; return res;
+    }
+    if (/\b2Y\b|24M|-2Y-|-24M-|\b2-?YEAR\b/i.test(upperJpDesc)) {
+      res.y2 = '100%'; return res;
+    }
+    if (/\b18M\b|-18M-|\b18-?MONTH\b/i.test(upperJpDesc)) {
+      res.m18 = '100%'; return res;
+    }
+    if (/\b(1Y|Y)\b|12M|-1Y-|-12M-|\bANNUAL\b|\bYEARLY\b|\b1-?YEAR\b/i.test(upperJpDesc)) {
+      res.y = '100%'; return res;
+    }
+    if (/\b6M\b|-6M-|\b6\s*CHK\b|\b6\s*MONTH\b|\bHALF YEAR\b|\bSEMI[- ]ANNUAL\b/i.test(upperJpDesc)) {
+      res.m6 = '100%'; return res;
+    }
+    if (/\b4M\b|-4M-|\b4-?MONTH\b/i.test(upperJpDesc)) {
+      res.m4 = '100%'; return res;
+    }
+    if (/\b3M\b|-3M-|\bQUARTERLY\b|\b3-?MONTH\b/i.test(upperJpDesc)) {
+      res.m3 = '100%'; return res;
+    }
+    if (/\b2M\b|-2M-|\bBI[- ]MONTHLY\b|\b2-?MONTH\b|\b10W\b/i.test(upperJpDesc)) {
+      res.m2 = '100%'; return res;
+    }
+    if (/\b(1M|1W)\b|-1M-|\bMONTHLY\b|\b1-?MONTH\b|\b1M\s*CHK\b/i.test(upperJpDesc)) {
+      res.m = '100%'; return res;
+    }
+  }
+
+  // 2. Secondary priority: Check JOBPLAN.JPNUM (e.g., ECSRYHTD-1M-1, ECSRYHTD-1Y-1, ECSRYHTD-4M-1, ECSRYHTD-6M-1)
+  if (upperJpNum) {
+    if (/-3Y-|\b3Y\b/.test(upperJpNum)) { res.y3 = '100%'; return res; }
+    if (/-2Y-|\b2Y\b/.test(upperJpNum)) { res.y2 = '100%'; return res; }
+    if (/-18M-|\b18M\b/.test(upperJpNum)) { res.m18 = '100%'; return res; }
+    if (/-1Y-|\b1Y\b|-12M-/.test(upperJpNum)) { res.y = '100%'; return res; }
+    if (/-6M-|\b6M\b/.test(upperJpNum)) { res.m6 = '100%'; return res; }
+    if (/-4M-|\b4M\b/.test(upperJpNum)) { res.m4 = '100%'; return res; }
+    if (/-3M-|\b3M\b/.test(upperJpNum)) { res.m3 = '100%'; return res; }
+    if (/-2M-|\b2M\b/.test(upperJpNum)) { res.m2 = '100%'; return res; }
+    if (/-1M-|\b1M\b|-1W-/.test(upperJpNum)) { res.m = '100%'; return res; }
+  }
+
+  // 3. Fallback: Check combined description text
+  if (/\b3Y\b|36M|-3Y-|-36M-|\b3-?YEAR\b/i.test(upperCombined)) {
     res.y3 = '100%';
-  } else if (/\b2Y\b|24M|-2Y-|-24M-|\b2-?YEAR\b/i.test(upper)) {
+  } else if (/\b2Y\b|24M|-2Y-|-24M-|\b2-?YEAR\b/i.test(upperCombined)) {
     res.y2 = '100%';
-  } else if (/\b18M\b|-18M-|\b18-?MONTH\b/i.test(upper)) {
+  } else if (/\b18M\b|-18M-|\b18-?MONTH\b/i.test(upperCombined)) {
     res.m18 = '100%';
-  } else if (/\b(1Y|Y)\b|12M|-1Y-|-12M-|\bANNUAL\b|\bYEARLY\b|\b1-?YEAR\b/i.test(upper)) {
+  } else if (/\b(1Y|Y)\b|12M|-1Y-|-12M-|\bANNUAL\b|\bYEARLY\b|\b1-?YEAR\b/i.test(upperCombined)) {
     res.y = '100%';
-  } else if (/\b6M\b|-6M-|\bHALF YEAR\b|\bSEMI[- ]ANNUAL\b|\b6-?MONTH\b/i.test(upper)) {
+  } else if (/\b6M\b|-6M-|\b6\s*CHK\b|\bHALF YEAR\b|\bSEMI[- ]ANNUAL\b|\b6-?MONTH\b/i.test(upperCombined)) {
     res.m6 = '100%';
-  } else if (/\b4M\b|-4M-|\b4-?MONTH\b/i.test(upper)) {
+  } else if (/\b4M\b|-4M-|\b4-?MONTH\b/i.test(upperCombined)) {
     res.m4 = '100%';
-  } else if (/\b3M\b|-3M-|\bQUARTERLY\b|\b3-?MONTH\b/i.test(upper)) {
+  } else if (/\b3M\b|-3M-|\bQUARTERLY\b|\b3-?MONTH\b/i.test(upperCombined)) {
     res.m3 = '100%';
-  } else if (/\b2M\b|-2M-|\bBI[- ]MONTHLY\b|\b2-?MONTH\b/i.test(upper)) {
+  } else if (/\b2M\b|-2M-|\bBI[- ]MONTHLY\b|\b2-?MONTH\b/i.test(upperCombined)) {
     res.m2 = '100%';
-  } else if (/\b10W\b|-10W-|\b10-?WEEK\b/i.test(upper)) {
+  } else if (/\b10W\b|-10W-|\b10-?WEEK\b/i.test(upperCombined)) {
     res.m2 = '100%';
-  } else if (/\b1M\b|-1M-|\bMONTHLY\b|\b1-?MONTH\b|\bM\b/i.test(upper)) {
+  } else if (/\b(1M|1W)\b|-1M-|\bMONTHLY\b|\b1-?MONTH\b|\bM\b/i.test(upperCombined)) {
     res.m = '100%';
   }
 
@@ -833,24 +1091,54 @@ export function parseGenericTableRows(
       h === 'ASSET_DESCRIPTION' ||
       h === 'ASSET DESCRIPTION' ||
       h.includes('ASSET.DESCRIPTION') ||
-      h.includes('ASSET_DESCRIPTION')
+      h.includes('ASSET_DESCRIPTION') ||
+      (h.startsWith('ASSET') && h.includes('DESC'))
+  );
+
+  // Rule: JOBPLAN.DESCRIPTION for maintenance frequency detection (1M, 3M, 4M, 6, 1Y, 18M, 2Y, 3Y)
+  const jobPlanDescIdx = header.findIndex(
+    (h) =>
+      h === 'JOBPLAN.DESCRIPTION' ||
+      h === 'JOBPLAN_DESCRIPTION' ||
+      h === 'JOBPLAN DESCRIPTION' ||
+      h === 'JOB PLAN DESCRIPTION' ||
+      (h.includes('JOBPLAN') && h.includes('DESC')) ||
+      (h.includes('JOB PLAN') && h.includes('DESC'))
+  );
+
+  // WORKORDER.DESCRIPTION
+  const workOrderDescIdx = header.findIndex(
+    (h) =>
+      h === 'WORKORDER.DESCRIPTION' ||
+      h === 'WORKORDER_DESCRIPTION' ||
+      h === 'WORKORDER DESCRIPTION' ||
+      h === 'WORK ORDER DESCRIPTION' ||
+      (h.includes('WORKORDER') && h.includes('DESC')) ||
+      (h.includes('WORK ORDER') && h.includes('DESC'))
   );
 
   const generalDescIdx = header.findIndex(
-    (h) =>
-      h === 'DESCRIPTION' ||
-      h === 'WORK DESCRIPTION' ||
-      h === 'WORK DESC' ||
-      h.includes('WORK DESCRIPTION') ||
-      h.includes('DESCRIPTION') ||
-      h === 'DESC' ||
-      h.includes('項目')
+    (h, idx) =>
+      idx !== assetDescIdx &&
+      idx !== jobPlanDescIdx &&
+      idx !== workOrderDescIdx &&
+      (h === 'DESCRIPTION' ||
+        h === 'WORK DESCRIPTION' ||
+        h === 'WORK DESC' ||
+        h.includes('WORK DESCRIPTION') ||
+        h.includes('DESCRIPTION') ||
+        h === 'DESC' ||
+        h.includes('項目'))
   );
 
   // If ASSET.DESCRIPTION is found, it is mapped directly to DESCRIPTION
-  const descIdx = assetDescIdx !== -1 ? assetDescIdx : generalDescIdx;
+  const descIdx = assetDescIdx !== -1 ? assetDescIdx : (generalDescIdx !== -1 ? generalDescIdx : workOrderDescIdx);
 
   const jpNumIdx = header.findIndex((h) =>
+    h === 'JOBPLAN.JPNUM' ||
+    h === 'JOBPLAN_JPNUM' ||
+    h === 'JOBPLAN JPNUM' ||
+    h === 'JOBPLAN' ||
     h === 'JPNUM' ||
     h.includes('JP_NUM') ||
     h.includes('JOB PLAN') ||
@@ -961,8 +1249,10 @@ export function parseGenericTableRows(
     // ASSET.DESCRIPTION = DESCRIPTION mapping:
     // If ASSET.DESCRIPTION exists, use it as the main description
     const assetDescVal = assetDescIdx !== -1 ? String(row[assetDescIdx] || '').trim() : '';
+    const jobPlanDescVal = jobPlanDescIdx !== -1 ? String(row[jobPlanDescIdx] || '').trim() : '';
+    const workOrderDescVal = workOrderDescIdx !== -1 ? String(row[workOrderDescIdx] || '').trim() : '';
     const generalDescVal = generalDescIdx !== -1 ? String(row[generalDescIdx] || '').trim() : '';
-    const descVal = assetDescVal || generalDescVal || (descIdx !== -1 ? String(row[descIdx] || '').trim() : '');
+    const descVal = assetDescVal || generalDescVal || workOrderDescVal || (descIdx !== -1 ? String(row[descIdx] || '').trim() : '');
 
     const jpNumVal = jpNumIdx !== -1 ? String(row[jpNumIdx] || '').trim() : '';
     const locVal = locIdx !== -1 ? String(row[locIdx] || '').trim() : '';
@@ -997,19 +1287,37 @@ export function parseGenericTableRows(
       continue;
     }
 
-    // Equipment description: standard matched or cleaned description without any cryptic code prefixes
-    // Prioritizing ASSET.DESCRIPTION as requested: ASSET.DESCRIPTION = DESCRIPTION
-    const stdDesc =
-      matchStandardWorkDescription(assetDescVal) ||
-      matchStandardWorkDescription(descVal) ||
-      matchStandardWorkDescription(generalDescVal) ||
-      matchStandardWorkDescription(assetNumVal) ||
-      matchStandardWorkDescription(jpNumVal);
+    // User rule: ASSET.DESCRIPTION column - read inside the meaning work, belong to MTR job maintenance
+    // such as "MR HTD ECS-AIR HANDLING UNIT ALL" -> "AIR HANDLING UNIT"
+    // "MR HTD ECS-Electro-thermal linked fire damper - ALL" -> "Electro-thermal linked fire damper"
+    let workDescription = '';
+    if (assetDescVal) {
+      workDescription = extractMeaningfulAssetWork(assetDescVal);
+    }
 
-    const workDescription = cleanWorkDescription(stdDesc || assetDescVal || descVal || generalDescVal || 'Air Cooled Chiller');
+    if (!workDescription && (descVal || generalDescVal || workOrderDescVal)) {
+      const stdDesc =
+        matchStandardWorkDescription(descVal) ||
+        matchStandardWorkDescription(generalDescVal) ||
+        matchStandardWorkDescription(workOrderDescVal);
+      workDescription = stdDesc || cleanWorkDescription(descVal || generalDescVal || workOrderDescVal);
+    }
 
-    // Detect maintenance frequency (check general description e.g. "1M; ACC...", assetDesc, and JPNUM)
-    const detectedFreq = detectMaintenanceFrequency(`${generalDescVal} ${assetDescVal} ${descVal} ${jpNumVal}`);
+    if (!workDescription && assetNumVal) {
+      const std = matchStandardWorkDescription(assetNumVal);
+      if (std) workDescription = std;
+    }
+
+    if (!workDescription) {
+      workDescription = 'Air Cooled Chiller';
+    }
+
+    // User rule: JOBPLAN.DESCRIPTION column - it belong to ECS read the 1M, 3M, 4M, 6, 1Y, 18M, 2Y, 3Y
+    const detectedFreq = detectMaintenanceFrequency(
+      `${generalDescVal} ${workOrderDescVal} ${descVal} ${assetDescVal}`,
+      jobPlanDescVal,
+      jpNumVal
+    );
 
     // If explicit columns exist in row (e.g. M, 2M, 3M, etc.), override
     if (mIdx !== -1 && row[mIdx]) detectedFreq.m = String(row[mIdx]).trim();
@@ -1027,7 +1335,9 @@ export function parseGenericTableRows(
       detectedFreq.m4 ||
       detectedFreq.m6 ||
       detectedFreq.y ||
-      detectedFreq.y2
+      detectedFreq.m18 ||
+      detectedFreq.y2 ||
+      detectedFreq.y3
     );
 
     // Default to '100%' under M if no other frequency was found
@@ -1042,7 +1352,7 @@ export function parseGenericTableRows(
     const item: MaintenanceItem = {
       id: `item-${itemStation}-${itemIndex}`,
       station: itemStation,
-      workDescription, // cleaned description
+      workDescription, // cleaned meaningful description
       pmWo: wonum, // PM W/O = WONUM
       qty: '1', // QTY=1 forever
       m: finalM,
@@ -1051,9 +1361,9 @@ export function parseGenericTableRows(
       m4: detectedFreq.m4 || '',
       m6: detectedFreq.m6 || '',
       y: detectedFreq.y || '',
-      m18: '',
+      m18: detectedFreq.m18 || '',
       y2: detectedFreq.y2 || '',
-      y3: '',
+      y3: detectedFreq.y3 || '',
       subEntries: [
         {
           id: `sub-${itemStation}-${itemIndex}-1`,
@@ -1064,7 +1374,9 @@ export function parseGenericTableRows(
           m4: detectedFreq.m4 || '',
           m6: detectedFreq.m6 || '',
           y: detectedFreq.y || '',
+          m18: detectedFreq.m18 || '',
           y2: detectedFreq.y2 || '',
+          y3: detectedFreq.y3 || '',
         },
       ],
     };
@@ -1078,10 +1390,29 @@ export function parseGenericTableRows(
 
       // Summary tracking
       if (!summaryMap.has(workDescription)) {
+        const freqLabel = finalM
+          ? '1M'
+          : detectedFreq.m3
+          ? '3M'
+          : detectedFreq.m4
+          ? '4M'
+          : detectedFreq.m6
+          ? '6M'
+          : detectedFreq.y
+          ? '1Y'
+          : detectedFreq.m18
+          ? '18M'
+          : detectedFreq.y2
+          ? '2Y'
+          : detectedFreq.y3
+          ? '3Y'
+          : detectedFreq.m2
+          ? '2M'
+          : '1M';
         summaryMap.set(workDescription, {
           count: 0,
           wos: [],
-          frequency: finalM ? '1M' : detectedFreq.m2 ? '2M' : detectedFreq.m3 ? '3M' : detectedFreq.m4 ? '4M' : detectedFreq.m6 ? '6M' : detectedFreq.y ? '1Y' : '1M',
+          frequency: freqLabel,
         });
       }
       const sumEntry = summaryMap.get(workDescription)!;
@@ -1142,14 +1473,14 @@ export function parseGenericTableRows(
         pmWoTotal: '',
         qtyTotal: String(stnItems.length),
         mTotal: String(stnItems.filter((i) => i.m && i.m.trim() !== '').length || (stnItems.length ? '100%' : '')),
-        m2Total: '',
-        m3Total: '',
-        m4Total: '',
-        m6Total: '',
-        yTotal: '',
-        m18Total: '',
-        y2Total: '',
-        y3Total: '',
+        m2Total: String(stnItems.filter((i) => i.m2 && i.m2.trim() !== '').length || ''),
+        m3Total: String(stnItems.filter((i) => i.m3 && i.m3.trim() !== '').length || ''),
+        m4Total: String(stnItems.filter((i) => i.m4 && i.m4.trim() !== '').length || ''),
+        m6Total: String(stnItems.filter((i) => i.m6 && i.m6.trim() !== '').length || ''),
+        yTotal: String(stnItems.filter((i) => i.y && i.y.trim() !== '').length || ''),
+        m18Total: String(stnItems.filter((i) => i.m18 && i.m18.trim() !== '').length || ''),
+        y2Total: String(stnItems.filter((i) => i.y2 && i.y2.trim() !== '').length || ''),
+        y3Total: String(stnItems.filter((i) => i.y3 && i.y3.trim() !== '').length || ''),
       },
       signatories: {
         preparedByName: globalPreparedByName,

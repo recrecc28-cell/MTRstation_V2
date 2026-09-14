@@ -35,13 +35,13 @@ interface Props {
   defaultTab?: 'upload' | 'paste';
 }
 
-const SAMPLE_MAXIMO_DATA = `Workgroup\tWO_WONUM\tASSETNUM\tTARGSTARTDA\tTARGCOMPDAT\tSCHEDSTAR\tSCHEDFINISH\tASSET.DESCRIPTION\tDESCRIPTION\tJPNUM\tReference Document\tWORKTYP\tLOCATION\tSTATUS
-COURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001803983\tLAK-ECS-ACC-102\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001805715\tLAK-ECS-ACC-103\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001801492\tLAK-ECS-ACC-104\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001809991\tTIC-ECS-ACC-201\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR
-COURYODN\t5001809992\tTIC-ECS-ACC-202\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR`;
+const SAMPLE_MAXIMO_DATA = `Workgroup\tWO_WONUM\tASSETNUM\tTARGSTARTDA\tASSET.DESCRIPTION\tJOBPLAN.DESCRIPTION\tJPNUM\tLOCATION
+COURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\tMR HTD ECS-AIR HANDLING UNIT ALL\tECS CONTRACT OUT PM JOB; RYODEN; (1M CHK)\tECS-ACC-T-LAK-1M-9\tLAK
+COURYODN\t5001803983\tLAK-ECS-ACC-102\t2026-09-01\tMR HTD ECS-Electro-thermal linked fire damper - ALL\tECS CONTRACT OUT PM JOB; RYODEN; (4M CHK)\tECSRYHTD-4M-1\tLAK
+COURYODN\t5001805715\tLAK-ECS-ACC-103\t2026-09-01\tMR HTD ECS-AIR HANDLING UNIT ALL\tECS VENTILATION SYSTEM CONTRACT OUT PM JOB; REC; (1Y CHK)\tECSRYHTD-1Y-1\tLAK
+COURYODN\t5001801492\tLAK-ECS-ACC-104\t2026-09-01\tMR HTD ECS-Fusible linked fire damper - ALL\tECS CONTRACT OUT PM JOB; RYODEN; (6M CHK)\tECSRYHTD-6M-1\tLAK
+COURYODN\t5001809991\tTIC-ECS-ACC-201\t2026-09-01\tMR HTD ECS-AIR HANDLING UNIT ALL\tECS CONTRACT OUT PM JOB; RYODEN; (1M CHK)\tECS-ACC-T-TIC-1M-9\tTIC
+COURYODN\t5001809992\tTIC-ECS-ACC-202\t2026-09-01\tMR HTD ECS-Motorised Operated Damper - ALL\tECS CONTRACT OUT PM JOB; RYODEN; (2Y CHK)\tECSRYHTD-2Y-1\tTIC`;
 
 export const ExcelUploadModal: React.FC<Props> = ({
   isOpen,
@@ -244,13 +244,17 @@ export const ExcelUploadModal: React.FC<Props> = ({
             <p className="text-xs text-slate-500">
               支援上傳 Excel 檔或直接貼上 Maximo 表格，自動提取工單號碼並填入報告
             </p>
-            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-700 font-medium">
+            <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-emerald-700 font-medium">
               <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.5 rounded font-mono">
                 WO_WONUM = WONUM
               </span>
               <span>‧</span>
               <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.5 rounded font-mono">
-                ASSET.DESCRIPTION = DESCRIPTION
+                ASSET.DESCRIPTION → 設備名稱提取
+              </span>
+              <span>‧</span>
+              <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                JOBPLAN.DESCRIPTION → 週期 (1M, 3M, 4M, 6, 1Y, 18M, 2Y, 3Y)
               </span>
             </div>
           </div>

@@ -203,8 +203,17 @@ export const MTR_STATIONS_LIST: MTRLocation[] = [
   },
 ];
 
-// 車廠：名字排列由 A-Z (Sorted alphabetically: HTD -> KBD -> PHD -> SHD -> TAD -> TMD -> TPB -> TWD)
+// 車廠：名字排列由 A-Z (Sorted alphabetically: CWD -> HTD -> KBD -> PHD -> SHD -> TAD -> TMD -> TPB -> TWD)
 export const MTR_DEPOTS_LIST: MTRLocation[] = [
+  {
+    code: 'CWD',
+    nameZh: '柴灣車廠',
+    nameEn: 'Chai Wan Depot',
+    title: 'MTRC Depot - CWD',
+    type: 'depot',
+    line: '港島綫 (ISL)',
+    description: 'Chai Wan Depot 保養報告',
+  },
   {
     code: 'HTD',
     nameZh: '何東樓車廠',
