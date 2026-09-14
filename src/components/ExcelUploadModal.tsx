@@ -194,7 +194,7 @@ export const ExcelUploadModal: React.FC<Props> = ({
           filterByDepot,
           existingItems,
         });
-        label = `貼上資料 (${parsedData.totalWoReadCount} 筆工單)`;
+        label = '貼上資料';
       } else {
         if (!selectedFile) {
           throw new Error('請先選擇或拖放 Excel 檔案');
@@ -407,11 +407,8 @@ export const ExcelUploadModal: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
                   <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <span>系統已成功識別數據：</span>
+                  <span>系統已成功識別數據</span>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-200/80 text-emerald-800">
-                  共讀取 {livePreview.totalWoReadCount} 筆工單
-                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-emerald-200/60">

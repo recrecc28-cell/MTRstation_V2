@@ -287,13 +287,7 @@ export default function App() {
       setCurrentDepot(targetCode);
     }
 
-    const summaries = parsedData.matchedItemsSummary;
-    let detailMsg = '';
-    if (summaries && summaries.length > 0) {
-      detailMsg = ` (${summaries.map((s: any) => `${s.workDescription}: ${s.count}筆`).join(', ')})`;
-    }
-
-    showToast(`成功匯入 ${fileName}：已載入 ${finalItems.length} 項工作單 (站點: ${targetCode}，QTY: 1)${detailMsg}`);
+    showToast(`成功匯入 ${fileName} (站點: ${targetCode})`);
   };
 
   const handleSaveToArchive = () => {

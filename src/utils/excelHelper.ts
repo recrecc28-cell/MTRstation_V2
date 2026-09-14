@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { MaintenanceReportData, MaintenanceItem } from '../types';
 import { ALL_MTR_LOCATIONS, getLocationTitle, getLocationByCode } from '../data/mtrLocations';
 
@@ -1161,38 +1162,206 @@ export function parsePastedText(
 }
 
 /**
- * Intelligent Excel file parser for MTR Maintenance List
+ * Fast & Safe Excel reader using ExcelJS
+ * Unlike SheetJS, ExcelJS parses OpenXML via streaming/iterative parsing
+ * and completely avoids "Maximum call stack size exceeded" errors on .xlsx files.
+ */
+async function parseWithExcelJS(
+  arrayBuffer: ArrayBuffer,
+  targetDepotCode?: string
+): Promise<{ jsonRows: any[][]; sheetName: string; allSheetsData: Record<string, any[][]> }> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(arrayBuffer);
+
+  if (!workbook.worksheets || workbook.worksheets.length === 0) {
+    throw new Error('Excel 檔案內沒有發現工作表 (Worksheet)');
+  }
+
+  const allSheetsData: Record<string, any[][]> = {};
+  const cleanTarget = (targetDepotCode || '').toUpperCase().trim();
+  let matchedSheet = workbook.worksheets[0];
+
+  for (const ws of workbook.worksheets) {
+    const sheetRows: any[][] = [];
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      const rawVals = Array.isArray(row.values) ? row.values.slice(1) : [];
+      const cells = rawVals.map((val: any) => {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'object') {
+          if ('result' in val && val.result !== undefined && val.result !== null) return String(val.result).trim();
+          if ('text' in val && val.text !== undefined && val.text !== null) return String(val.text).trim();
+          if ('richText' in val && Array.isArray(val.richText)) {
+            return val.richText.map((t: any) => t.text || '').join('').trim();
+          }
+        }
+        if (val instanceof Date) {
+          const y = val.getFullYear();
+          const m = String(val.getMonth() + 1).padStart(2, '0');
+          const d = String(val.getDate()).padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        }
+        return String(val).trim();
+      });
+
+      if (cells.some((c) => c !== '')) {
+        sheetRows.push(cells);
+      }
+    });
+
+    allSheetsData[ws.name] = sheetRows;
+
+    const upperSheet = ws.name.toUpperCase();
+    if (cleanTarget && (upperSheet === cleanTarget || upperSheet.includes(cleanTarget))) {
+      matchedSheet = ws;
+    }
+  }
+
+  // If the matchedSheet has no rows, fallback to first non-empty sheet
+  if ((allSheetsData[matchedSheet.name] || []).length === 0) {
+    for (const ws of workbook.worksheets) {
+      if ((allSheetsData[ws.name] || []).length > 0) {
+        matchedSheet = ws;
+        break;
+      }
+    }
+  }
+
+  return {
+    jsonRows: allSheetsData[matchedSheet.name] || [],
+    sheetName: matchedSheet.name,
+    allSheetsData,
+  };
+}
+
+/**
+ * Fallback parser using SheetJS with defensive options to avoid call stack overflow
+ */
+function parseWithSheetJS(
+  data: Uint8Array | ArrayBuffer | string,
+  type: 'array' | 'binary' | 'buffer',
+  targetDepotCode?: string
+): { jsonRows: any[][]; sheetName: string; allSheetsData: Record<string, any[][]> } {
+  const workbook = XLSX.read(data, {
+    type: type as any,
+    dense: true, // Use 2D array representation internally - saves memory and avoids object property recursion
+    cellDates: true,
+    cellFormula: false,
+    cellHTML: false,
+    cellText: false,
+  });
+
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error('Excel 檔案內沒有發現工作表');
+  }
+
+  const cleanTarget = (targetDepotCode || '').toUpperCase().trim();
+  let matchedSheetName = workbook.SheetNames[0];
+
+  const allSheetsData: Record<string, any[][]> = {};
+  for (const sName of workbook.SheetNames) {
+    const ws = workbook.Sheets[sName];
+    if (ws) {
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      allSheetsData[sName] = rows;
+      const upper = sName.toUpperCase();
+      if (cleanTarget && (upper === cleanTarget || upper.includes(cleanTarget))) {
+        matchedSheetName = sName;
+      }
+    }
+  }
+
+  return {
+    jsonRows: allSheetsData[matchedSheetName] || [],
+    sheetName: matchedSheetName,
+    allSheetsData,
+  };
+}
+
+/**
+ * Intelligent Multi-Engine Excel file parser for MTR Maintenance List
+ * Primary engine: ExcelJS (robust, avoids browser stack overflow)
+ * Fallback engine: SheetJS (with dense array and binary string safety modes)
  */
 export async function parseExcelFile(
   file: File,
   options: ParseExcelOptions = {}
 ): Promise<ParsedTableResult> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+  const arrayBuffer = await file.arrayBuffer();
 
-    reader.onload = (e) => {
+  let extractedData: {
+    jsonRows: any[][];
+    sheetName: string;
+    allSheetsData: Record<string, any[][]>;
+  } | null = null;
+
+  // Strategy 1: ExcelJS (Primary, immune to call stack overflow on OpenXML .xlsx)
+  try {
+    extractedData = await parseWithExcelJS(arrayBuffer, options.targetDepotCode);
+  } catch (excelJsError: any) {
+    console.warn('ExcelJS parsing failed or non-xlsx format, attempting SheetJS fallback:', excelJsError);
+  }
+
+  // Strategy 2: SheetJS with binary string or dense array (For .xls / .xlml / older formats)
+  if (!extractedData || !extractedData.jsonRows || extractedData.jsonRows.length === 0) {
+    try {
+      const uint8 = new Uint8Array(arrayBuffer);
+      extractedData = parseWithSheetJS(uint8, 'array', options.targetDepotCode);
+    } catch (sheetJsError: any) {
+      console.warn('SheetJS array read failed, attempting chunked binary string fallback:', sheetJsError);
       try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-
-        if (!workbook.SheetNames.length) {
-          throw new Error('Excel 檔案內沒有發現工作表 (Sheet)');
+        const uint8 = new Uint8Array(arrayBuffer);
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < uint8.length; i += chunkSize) {
+          const chunk = uint8.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, Array.from(chunk));
         }
-
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
-        const result = parseGenericTableRows(jsonRows, options);
-        resolve(result);
-      } catch (err) {
-        reject(err);
+        extractedData = parseWithSheetJS(binary, 'binary', options.targetDepotCode);
+      } catch (finalErr: any) {
+        throw new Error(
+          finalErr.message?.includes('call stack')
+            ? 'Excel 檔案結構過於複雜導致呼叫堆疊溢位 (Stack Overflow)。已啟動保護機制，建議確認檔案為標準 .xlsx 格式。'
+            : `無法讀取 Excel 內容：${finalErr.message || '未知格式錯誤'}`
+        );
       }
+    }
+  }
+
+  if (!extractedData || !extractedData.jsonRows || extractedData.jsonRows.length === 0) {
+    throw new Error('Excel 檔案內未能讀取到任何資料行');
+  }
+
+  // Parse the primary sheet
+  const primaryResult = parseGenericTableRows(extractedData.jsonRows, options);
+
+  // If there are multiple sheets across different stations, parse each sheet and merge into reportsByStationMap
+  if (extractedData.allSheetsData) {
+    const multiStationMap: Record<string, Partial<MaintenanceReportData>> = {
+      ...(primaryResult.reportsByStationMap || {}),
     };
 
-    reader.onerror = () => reject(new Error('讀取檔案失敗'));
-    reader.readAsArrayBuffer(file);
-  });
+    for (const [sheetName, sheetRows] of Object.entries(extractedData.allSheetsData)) {
+      if (sheetRows.length > 1 && sheetName !== extractedData.sheetName) {
+        try {
+          const detectedCode = detectLocationCode(sheetName);
+          const sheetResult = parseGenericTableRows(sheetRows, {
+            ...options,
+            targetDepotCode: detectedCode || options.targetDepotCode,
+          });
+          const code = sheetResult.detectedLocation || detectedCode;
+          if (code && sheetResult.items && sheetResult.items.length > 0) {
+            multiStationMap[code] = sheetResult;
+          }
+        } catch {
+          // ignore non-table sheets (cover page, instructions, etc.)
+        }
+      }
+    }
+
+    primaryResult.reportsByStationMap = multiStationMap;
+  }
+
+  return primaryResult;
 }
 
 /**
