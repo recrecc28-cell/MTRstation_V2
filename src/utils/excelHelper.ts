@@ -452,7 +452,8 @@ export function matchStandardWorkDescription(rawText: string): string {
     return 'Sea Water Intake Screen';
   }
 
-  return cleanWorkDescription(rawText);
+  // If no standard pattern matched, return empty string (let caller fallback to cleaned text)
+  return '';
 }
 
 /**
@@ -769,9 +770,12 @@ export function parseGenericTableRows(
       rowCells.includes('ASSETNUM') ||
       rowCells.includes('ASSET.ASSETNUM') ||
       rowCells.includes('DESCRIPTION') ||
+      rowCells.includes('ASSET.DESCRIPTION') ||
+      rowCells.includes('ASSET_DESCRIPTION') ||
       rowCells.includes('WORK DESCRIPTION') ||
       rowCells.includes('PM W/O') ||
       (rowStr.includes('WONUM') && rowStr.includes('DESCRIPTION')) ||
+      (rowStr.includes('WO_WONUM') && (rowStr.includes('DESCRIPTION') || rowStr.includes('ASSET'))) ||
       (rowStr.includes('WORKGROUP') && rowStr.includes('ASSETNUM'))
     ) {
       headerRowIndex = i;
@@ -786,34 +790,65 @@ export function parseGenericTableRows(
   const rawHeader = jsonRows[headerRowIndex] || [];
   const header = rawHeader.map((c) => String(c || '').trim().toUpperCase());
 
-  const woNumIdx = header.findIndex((h) =>
-    h === 'WONUM' ||
-    h.includes('WO_WONUM') ||
-    h.includes('WONUM') ||
-    h.includes('WO NUMBER') ||
-    h === 'W/O' ||
-    h === 'PM W/O' ||
-    h.includes('工單') ||
-    h.includes('WORK ORDER')
+  // Rule: WO_WONUM = WONUM
+  let woNumIdx = header.findIndex(
+    (h) => h === 'WO_WONUM' || h === 'WO-WONUM' || h === 'WO.WONUM' || h.replace(/[^A-Z0-9]/g, '') === 'WOWONUM'
+  );
+  if (woNumIdx === -1) {
+    woNumIdx = header.findIndex((h) => h === 'WONUM' || h.replace(/[^A-Z0-9]/g, '') === 'WONUM');
+  }
+  if (woNumIdx === -1) {
+    woNumIdx = header.findIndex((h) =>
+      h.includes('WO_WONUM') ||
+      h.includes('WONUM') ||
+      h.includes('WO NUMBER') ||
+      h === 'W/O' ||
+      h === 'PM W/O' ||
+      h.includes('工單') ||
+      h.includes('WORK ORDER')
+    );
+  }
+
+  // ASSETNUM / ASSET.ASSETNUM
+  let assetNumIdx = header.findIndex(
+    (h) => h === 'ASSET.ASSETNUM' || h === 'ASSET_ASSETNUM' || h === 'ASSET ASSETNUM'
+  );
+  if (assetNumIdx === -1) {
+    assetNumIdx = header.findIndex((h) => h === 'ASSETNUM' || h.replace(/[^A-Z0-9]/g, '') === 'ASSETNUM');
+  }
+  if (assetNumIdx === -1) {
+    assetNumIdx = header.findIndex((h) =>
+      h.includes('ASSET.ASSETNUM') ||
+      h.includes('ASSETNUM') ||
+      h.includes('ASSET NUMBER') ||
+      h === 'ASSET'
+    );
+  }
+
+  // Rule: ASSET.DESCRIPTION = DESCRIPTION
+  // Specifically map ASSET.DESCRIPTION as the primary equipment description column
+  const assetDescIdx = header.findIndex(
+    (h) =>
+      h === 'ASSET.DESCRIPTION' ||
+      h === 'ASSET_DESCRIPTION' ||
+      h === 'ASSET DESCRIPTION' ||
+      h.includes('ASSET.DESCRIPTION') ||
+      h.includes('ASSET_DESCRIPTION')
   );
 
-  const assetNumIdx = header.findIndex((h) =>
-    h === 'ASSETNUM' ||
-    h.includes('ASSET.ASSETNUM') ||
-    h.includes('ASSETNUM') ||
-    h.includes('ASSET NUMBER') ||
-    h === 'ASSET'
+  const generalDescIdx = header.findIndex(
+    (h) =>
+      h === 'DESCRIPTION' ||
+      h === 'WORK DESCRIPTION' ||
+      h === 'WORK DESC' ||
+      h.includes('WORK DESCRIPTION') ||
+      h.includes('DESCRIPTION') ||
+      h === 'DESC' ||
+      h.includes('項目')
   );
 
-  const descIdx = header.findIndex((h) =>
-    h === 'DESCRIPTION' ||
-    h.includes('ASSET.DESCRIPTION') ||
-    h.includes('WORK DESCRIPTION') ||
-    h.includes('WORK DESC') ||
-    h.includes('DESCRIPTION') ||
-    h === 'DESC' ||
-    h.includes('項目')
-  );
+  // If ASSET.DESCRIPTION is found, it is mapped directly to DESCRIPTION
+  const descIdx = assetDescIdx !== -1 ? assetDescIdx : generalDescIdx;
 
   const jpNumIdx = header.findIndex((h) =>
     h === 'JPNUM' ||
@@ -922,7 +957,13 @@ export function parseGenericTableRows(
 
     const woNumVal = woNumIdx !== -1 ? String(row[woNumIdx] || '').trim() : '';
     const assetNumVal = assetNumIdx !== -1 ? String(row[assetNumIdx] || '').trim() : '';
-    const descVal = descIdx !== -1 ? String(row[descIdx] || '').trim() : '';
+
+    // ASSET.DESCRIPTION = DESCRIPTION mapping:
+    // If ASSET.DESCRIPTION exists, use it as the main description
+    const assetDescVal = assetDescIdx !== -1 ? String(row[assetDescIdx] || '').trim() : '';
+    const generalDescVal = generalDescIdx !== -1 ? String(row[generalDescIdx] || '').trim() : '';
+    const descVal = assetDescVal || generalDescVal || (descIdx !== -1 ? String(row[descIdx] || '').trim() : '');
+
     const jpNumVal = jpNumIdx !== -1 ? String(row[jpNumIdx] || '').trim() : '';
     const locVal = locIdx !== -1 ? String(row[locIdx] || '').trim() : '';
     const startVal = targStartIdx !== -1 ? row[targStartIdx] : '';
@@ -942,6 +983,7 @@ export function parseGenericTableRows(
       detectLocationCode(assetNumVal) ||
       detectLocationCode(locVal) ||
       detectLocationCode(jpNumVal) ||
+      detectLocationCode(assetDescVal) ||
       detectLocationCode(descVal) ||
       ''
     ).toUpperCase();
@@ -949,22 +991,25 @@ export function parseGenericTableRows(
     // Determine which station this item belongs to
     const itemStation = rowStn || targetStation;
 
-    // Identify WO identifier: WONUM first
+    // Identify WO identifier: WO_WONUM = WONUM
     const wonum = woNumVal || assetNumVal;
     if (!wonum && !descVal) {
       continue;
     }
 
     // Equipment description: standard matched or cleaned description without any cryptic code prefixes
+    // Prioritizing ASSET.DESCRIPTION as requested: ASSET.DESCRIPTION = DESCRIPTION
     const stdDesc =
+      matchStandardWorkDescription(assetDescVal) ||
       matchStandardWorkDescription(descVal) ||
+      matchStandardWorkDescription(generalDescVal) ||
       matchStandardWorkDescription(assetNumVal) ||
       matchStandardWorkDescription(jpNumVal);
 
-    const workDescription = cleanWorkDescription(stdDesc || descVal || 'Air Cooled Chiller');
+    const workDescription = cleanWorkDescription(stdDesc || assetDescVal || descVal || generalDescVal || 'Air Cooled Chiller');
 
-    // Detect maintenance frequency (e.g. "1M; ACC..." or JPNUM "ECS-ACC-T-LAK-1M-9")
-    const detectedFreq = detectMaintenanceFrequency(`${descVal} ${jpNumVal}`);
+    // Detect maintenance frequency (check general description e.g. "1M; ACC...", assetDesc, and JPNUM)
+    const detectedFreq = detectMaintenanceFrequency(`${generalDescVal} ${assetDescVal} ${descVal} ${jpNumVal}`);
 
     // If explicit columns exist in row (e.g. M, 2M, 3M, etc.), override
     if (mIdx !== -1 && row[mIdx]) detectedFreq.m = String(row[mIdx]).trim();

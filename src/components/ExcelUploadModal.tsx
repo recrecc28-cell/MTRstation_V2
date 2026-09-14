@@ -35,13 +35,13 @@ interface Props {
   defaultTab?: 'upload' | 'paste';
 }
 
-const SAMPLE_MAXIMO_DATA = `Workgroup\tWONUM\tASSETNUM\tTARGSTARTDA\tTARGCOMPDAT\tSCHEDSTAR\tSCHEDFINISH\tDESCRIPTION\tJPNUM\tReference Document\tWORKTYP\tLOCATION\tSTATUS
-COURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001803983\tLAK-ECS-ACC-102\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001805715\tLAK-ECS-ACC-103\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001801492\tLAK-ECS-ACC-104\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
-COURYODN\t5001809991\tTIC-ECS-ACC-201\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR
-COURYODN\t5001809992\tTIC-ECS-ACC-202\t2026-09-01\t2026-09-30\t\t\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR`;
+const SAMPLE_MAXIMO_DATA = `Workgroup\tWO_WONUM\tASSETNUM\tTARGSTARTDA\tTARGCOMPDAT\tSCHEDSTAR\tSCHEDFINISH\tASSET.DESCRIPTION\tDESCRIPTION\tJPNUM\tReference Document\tWORKTYP\tLOCATION\tSTATUS
+COURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
+COURYODN\t5001803983\tLAK-ECS-ACC-102\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
+COURYODN\t5001805715\tLAK-ECS-ACC-103\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
+COURYODN\t5001801492\tLAK-ECS-ACC-104\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-LAK-1M-9\tN/A\tPM-PS\tLAK\tAPPR
+COURYODN\t5001809991\tTIC-ECS-ACC-201\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR
+COURYODN\t5001809992\tTIC-ECS-ACC-202\t2026-09-01\t2026-09-30\t\t\tAir Cooled Chiller\t1M; ACC; Air Cooled Chiller; by Contractor\tECS-ACC-T-TIC-1M-9\tN/A\tPM-PS\tTIC\tAPPR`;
 
 export const ExcelUploadModal: React.FC<Props> = ({
   isOpen,
@@ -244,6 +244,15 @@ export const ExcelUploadModal: React.FC<Props> = ({
             <p className="text-xs text-slate-500">
               支援上傳 Excel 檔或直接貼上 Maximo 表格，自動提取工單號碼並填入報告
             </p>
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-700 font-medium">
+              <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                WO_WONUM = WONUM
+              </span>
+              <span>‧</span>
+              <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                ASSET.DESCRIPTION = DESCRIPTION
+              </span>
+            </div>
           </div>
         </div>
 
@@ -394,7 +403,7 @@ export const ExcelUploadModal: React.FC<Props> = ({
               <textarea
                 value={pastedText}
                 onChange={(e) => setPastedText(e.target.value)}
-                placeholder={`貼上資料格式範例：\nWorkgroup\tWONUM\tASSETNUM\tTARGSTARTDA\tDESCRIPTION\tLOCATION\nCOURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\t1M; ACC; Air Cooled Chiller\tLAK\n...`}
+                placeholder={`貼上資料格式範例：\nWorkgroup\tWO_WONUM\tASSETNUM\tTARGSTARTDA\tASSET.DESCRIPTION\tLOCATION\nCOURYODN\t5001800024\tLAK-ECS-ACC-101\t2026-09-01\tAir Cooled Chiller\tLAK\n...`}
                 rows={5}
                 className="w-full p-2.5 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 leading-relaxed resize-none"
               />
