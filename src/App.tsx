@@ -52,6 +52,37 @@ export default function App() {
     }
   });
 
+  // Helper to clean phantom preset items (e.g. Air Cooled Chiller with no PM W/O, or empty items)
+  const cleanPresetItems = (report: MaintenanceReportData): MaintenanceReportData => {
+    if (!report || !Array.isArray(report.items)) return report;
+    const filteredItems = report.items.filter((item) => {
+      const hasNoWo = !item.pmWo || item.pmWo.trim() === '';
+      const isAirCooled = (item.workDescription || '').trim().toLowerCase() === 'air cooled chiller';
+      const isBlank = !(item.workDescription || '').trim();
+      // Filter out phantom items with no WO that are Air Cooled Chiller or empty
+      if (hasNoWo && (isAirCooled || isBlank)) {
+        return false;
+      }
+      return true;
+    });
+
+    if (filteredItems.length !== report.items.length) {
+      return {
+        ...report,
+        items: filteredItems,
+        overallTotals: {
+          ...report.overallTotals,
+          qtyTotal: String(filteredItems.length),
+          mTotal: String(
+            filteredItems.filter((i) => i.m && i.m.trim() !== '').length ||
+              (filteredItems.length ? '100%' : '')
+          ),
+        },
+      };
+    }
+    return report;
+  };
+
   // Reports Map by Station/Depot
   const [reportsByDepot, setReportsByDepot] = useState<Record<string, MaintenanceReportData>>(() => {
     try {
@@ -70,7 +101,7 @@ export default function App() {
       ALL_MTR_LOCATIONS.forEach((loc) => {
         const code = loc.code;
         if (parsedMap[code]) {
-          result[code] = parsedMap[code];
+          result[code] = cleanPresetItems(parsedMap[code]);
         } else {
           result[code] = createEmptyReport(code);
         }
@@ -400,6 +431,23 @@ export default function App() {
     }
   };
 
+  const handleClearTmdTwdPhd = () => {
+    if (
+      window.confirm(
+        '確定要清空 TMD (屯門)、TWD (荃灣)、PHD (八鄉) 三個車廠的預設答案與資料嗎？\n\n（這三個車廠將被重置為完全空白的表格）'
+      )
+    ) {
+      setReportsByDepot((prev) => {
+        const next = { ...prev };
+        ['TMD', 'TWD', 'PHD'].forEach((code) => {
+          next[code] = createEmptyReport(code);
+        });
+        return next;
+      });
+      showToast('已清空 TMD、TWD、PHD 的預設與表格資料！');
+    }
+  };
+
   const handlePrint = () => {
     printDocument('pdf-report-canvas');
   };
@@ -523,15 +571,26 @@ export default function App() {
               {reportData.reportMonthYear} ‧ {reportData.items.length} 項
             </span>
 
+            {/* Clear TMD, TWD, PHD Preset Answers */}
+            <button
+              type="button"
+              onClick={handleClearTmdTwdPhd}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="清除 TMD (屯門)、TWD (荃灣)、PHD (八鄉) 預設答案與資料"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+              <span>清空 TMD/TWD/PHD 預設</span>
+            </button>
+
             {/* Clear Current Station Button */}
             <button
               type="button"
               onClick={handleResetDefaultPdf}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50/60 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
               title="清空目前選取站點的所有資料 (Clear Current Station)"
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-              <span>清空本站 (Clear Station)</span>
+              <span>清空本站</span>
             </button>
 
             {/* Clear All Data Button */}

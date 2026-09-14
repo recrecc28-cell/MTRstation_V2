@@ -596,26 +596,25 @@ function cleanAssetWorkString(str: string): string {
   let res = str.trim();
 
   // Strip leading prefixes:
-  // e.g. "MR HTD ECS-", "MR TAD ECS/", "MR TPB ECS-", "MR PHD ECS-", "MR-CWD-", "MR-KBD-", "MR-SHD-", "MR-TWD ", "MR-TWD-"
+  // e.g. "MR HTD ECS-", "MR PHD ECS-", "MR-PHD-ECS-", "MR-CWD-", "HTD ECS-", "ECS-", etc.
   res = res
-    .replace(/^MR[\s\-]+[A-Z0-9]{3,4}[\s\-]+(?:ECS[\s\-/]+)?/i, '')
-    .replace(/^MR[\s\-]+(?:ECS[\s\-/]+)?/i, '')
-    .replace(/^MR-[A-Z0-9]{3,4}-/i, '')
-    .replace(/^MR\s+[A-Z0-9]{3,4}\s+/i, '')
-    .replace(/^MR[\s\-]+/i, '');
-
-  // Strip subsystem prefix if still present (e.g. "ECS-", "ECS/")
-  res = res.replace(/^ECS[\s\-/]+/i, '');
+    .replace(/^MR[\s\-]+[A-Z0-9]{3,4}[\s\-]+(?:ECS|BMS|FAS|PSD|MVAC|VAC|BEM|FPS)[\s\-/]+/i, '')
+    .replace(/^MR[\s\-]+[A-Z0-9]{3,4}[\s\-/]+/i, '')
+    .replace(/^MR[\s\-]+(?:ECS|BMS|FAS|PSD|MVAC|VAC|BEM|FPS)[\s\-/]+/i, '')
+    .replace(/^MR[\s\-]+/i, '')
+    .replace(/^[A-Z0-9]{3,4}[\s\-]+(?:ECS|BMS|FAS|PSD|MVAC|VAC|BEM|FPS)[\s\-/]+/i, '')
+    .replace(/^(?:ECS|BMS|FAS|PSD|MVAC|VAC|BEM|FPS)[\s\-/]+/i, '');
 
   // Strip trailing station + ALL suffixes if separated by semicolons (e.g. ";TWD ;ALL" or "; TWD ; ALL")
   res = res.replace(/;\s*[A-Z0-9]{3,4}\s*;\s*ALL\s*$/i, '');
   res = res.replace(/;\s*[A-Z0-9]{3,4}\s+ALL\s*$/i, '');
 
   // Strip trailing suffixes:
-  // e.g. " - ALL", " ;ALL", "-ALL", " ALL"
+  // e.g. " - ALL", " ;ALL", "-ALL", " ALL", " (ALL)", " - ALL."
   res = res
-    .replace(/[\s\-–—;,]+ALL\s*$/i, '')
-    .replace(/\s+ALL\s*$/i, '')
+    .replace(/[\s\-–—;,]+ALL\s*[.]?$/i, '')
+    .replace(/\s+ALL\s*[.]?$/i, '')
+    .replace(/[\s\-–—;,]+\(ALL\)\s*$/i, '')
     .replace(/[\s\-–—;,]+$/i, '')
     .trim();
 
@@ -1235,10 +1234,16 @@ export function parseGenericTableRows(
     if (!row || row.length === 0) continue;
 
     const rowText = row.map((c) => String(c || '').trim()).join(' ');
+    const trimmedRowText = rowText.trim();
     if (
-      rowText.includes('Overall Total') ||
-      rowText.includes('Prepared by:') ||
-      rowText.startsWith('count :')
+      /overall\s*total/i.test(trimmedRowText) ||
+      /prepared\s*by/i.test(trimmedRowText) ||
+      /verified\s*by/i.test(trimmedRowText) ||
+      /endorsed\s*by/i.test(trimmedRowText) ||
+      /^count\s*[:：]/i.test(trimmedRowText) ||
+      /^total\s*[:：]/i.test(trimmedRowText) ||
+      /^records?\s*[:：]/i.test(trimmedRowText) ||
+      /^\d+\s*-\s*\d+\s*of\s*\d+/i.test(trimmedRowText)
     ) {
       break;
     }
@@ -1283,7 +1288,13 @@ export function parseGenericTableRows(
 
     // Identify WO identifier: WO_WONUM = WONUM
     const wonum = woNumVal || assetNumVal;
-    if (!wonum && !descVal) {
+    // Strict requirement: A valid maintenance item MUST have a work order or asset number!
+    if (!wonum || !wonum.trim()) {
+      continue;
+    }
+
+    // Skip summary footer rows that might appear in the wonum column
+    if (/^count\s*[:：]?\s*\d*$/i.test(wonum) || /^total/i.test(wonum)) {
       continue;
     }
 
@@ -1308,8 +1319,10 @@ export function parseGenericTableRows(
       if (std) workDescription = std;
     }
 
+    // Never set 'Air Cooled Chiller' as fallback default answer!
     if (!workDescription) {
-      workDescription = 'Air Cooled Chiller';
+      const fallback = cleanWorkDescription(descVal || generalDescVal || workOrderDescVal || assetDescVal || wonum);
+      workDescription = fallback || 'Maintenance Item';
     }
 
     // User rule: JOBPLAN.DESCRIPTION column - it belong to ECS read the 1M, 3M, 4M, 6, 1Y, 18M, 2Y, 3Y
