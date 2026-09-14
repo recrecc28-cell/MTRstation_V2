@@ -33,10 +33,11 @@ import {
   ClipboardPaste,
 } from 'lucide-react';
 
-const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_empty_v2';
+const STORAGE_KEY_REPORTS_MAP = 'mtr_pm_reports_v5_cleared_depots';
 const STORAGE_KEY_ACTIVE_DEPOT = 'mtr_pm_active_depot_code';
 const STORAGE_KEY_FINETUNE = 'mtr_pm_finetune_settings';
 const STORAGE_KEY_ARCHIVES = 'mtr_pm_archives_history';
+const STORAGE_KEY_TMD_TWD_PHD_PURGED = 'mtr_cleared_tmd_twd_phd_done_v3';
 
 export default function App() {
   // Active Station/Depot Tab - default to LAK
@@ -86,6 +87,7 @@ export default function App() {
   // Reports Map by Station/Depot
   const [reportsByDepot, setReportsByDepot] = useState<Record<string, MaintenanceReportData>>(() => {
     try {
+      const isPurged = localStorage.getItem(STORAGE_KEY_TMD_TWD_PHD_PURGED);
       const saved = localStorage.getItem(STORAGE_KEY_REPORTS_MAP);
       let parsedMap: Record<string, any> = {};
 
@@ -100,12 +102,24 @@ export default function App() {
       const result: Record<string, MaintenanceReportData> = {};
       ALL_MTR_LOCATIONS.forEach((loc) => {
         const code = loc.code;
-        if (parsedMap[code]) {
+        // User directive: TMD/TWD/PHD 車廠的PM W/O, WORK DESCRIPTION 的預設內容，全部刪除, 只留車站名
+        if (!isPurged && (code === 'TMD' || code === 'TWD' || code === 'PHD')) {
+          result[code] = createEmptyReport(code);
+        } else if (parsedMap[code]) {
           result[code] = cleanPresetItems(parsedMap[code]);
         } else {
           result[code] = createEmptyReport(code);
         }
       });
+
+      // Mark migration flag so new user imports to TMD/TWD/PHD will be preserved
+      if (!isPurged) {
+        try {
+          localStorage.setItem(STORAGE_KEY_TMD_TWD_PHD_PURGED, 'true');
+          localStorage.removeItem('mtr_pm_reports_empty_v2');
+          localStorage.removeItem('mtr_pm_reports_empty_v1');
+        } catch {}
+      }
 
       return result;
     } catch (e) {
@@ -431,23 +445,6 @@ export default function App() {
     }
   };
 
-  const handleClearTmdTwdPhd = () => {
-    if (
-      window.confirm(
-        '確定要清空 TMD (屯門)、TWD (荃灣)、PHD (八鄉) 三個車廠的預設答案與資料嗎？\n\n（這三個車廠將被重置為完全空白的表格）'
-      )
-    ) {
-      setReportsByDepot((prev) => {
-        const next = { ...prev };
-        ['TMD', 'TWD', 'PHD'].forEach((code) => {
-          next[code] = createEmptyReport(code);
-        });
-        return next;
-      });
-      showToast('已清空 TMD、TWD、PHD 的預設與表格資料！');
-    }
-  };
-
   const handlePrint = () => {
     printDocument('pdf-report-canvas');
   };
@@ -571,26 +568,15 @@ export default function App() {
               {reportData.reportMonthYear} ‧ {reportData.items.length} 項
             </span>
 
-            {/* Clear TMD, TWD, PHD Preset Answers */}
-            <button
-              type="button"
-              onClick={handleClearTmdTwdPhd}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="清除 TMD (屯門)、TWD (荃灣)、PHD (八鄉) 預設答案與資料"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-              <span>清空 TMD/TWD/PHD 預設</span>
-            </button>
-
             {/* Clear Current Station Button */}
             <button
               type="button"
               onClick={handleResetDefaultPdf}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50/60 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
               title="清空目前選取站點的所有資料 (Clear Current Station)"
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-              <span>清空本站</span>
+              <span>清空本站 (Clear Station)</span>
             </button>
 
             {/* Clear All Data Button */}

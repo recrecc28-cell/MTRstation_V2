@@ -6,7 +6,7 @@ import { ALL_MTR_LOCATIONS, getLocationTitle, getLocationByCode } from '../data/
 export const STANDARD_MTR_ITEMS = [
   'Air Handling Unit /Primary Air Handling Unit',
   'Fan Coil Unit',
-  'Air Cooled Chiller',
+  'AIR-COOLED CHILLER',
   'Water Cooled Chiller',
   'Chilled Water Pump',
   'Cooling Tower',
@@ -34,7 +34,7 @@ export const STANDARD_MTR_ITEMS = [
   'Sensor',
   'Flexible Connection',
   'Pipework Insulation',
-  'Electro-thermal linked fire damper',
+  'thermal linked fire damper',
   'Fusible linked fire damper',
   'Motorised Operated Damper',
   'Smoke Extraction System',
@@ -62,18 +62,19 @@ export function matchStandardWorkDescription(rawText: string): string {
     return 'Water Cooled Chiller';
   }
 
-  // 1. Air Cooled Chiller (ACC)
+  // 1. Air Cooled Chiller (ACC) -> Standardised to AIR-COOLED CHILLER
   if (
+    text === 'ACC' ||
     text.includes('AIR COOLED CHILLER') ||
     text.includes('AIR-COOLED CHILLER') ||
     text.includes('ECS-ACC') ||
     text.includes('-ACC-') ||
     text.endsWith('-ACC') ||
     text.includes('ACC-ALL') ||
-    (text.includes('CHILLER') && !text.includes('WATER PUMP') && !text.includes('PUMP')) ||
+    (text.includes('CHILLER') && !text.includes('WATER PUMP') && !text.includes('PUMP') && !text.includes('WATER COOLED') && !text.includes('WATER-COOLED')) ||
     /\bACC\b/.test(text)
   ) {
-    return 'Air Cooled Chiller';
+    return 'AIR-COOLED CHILLER';
   }
 
   // 2. Disposal Bag Filter (DBF)
@@ -458,17 +459,18 @@ export function matchStandardWorkDescription(rawText: string): string {
     return 'Sea Water Intake Screen';
   }
 
-  // Electro-thermal linked fire damper (ETD)
+  // Electro-thermal linked fire damper (ETD) -> User rule: thermal linked fire damper
   if (
     text.includes('ELECTRO-THERMAL') ||
     text.includes('ELECTRO THERMAL') ||
+    text.includes('THERMAL LINKED FIRE DAMPER') ||
     text.includes('ECS-ETD') ||
     text.includes('-ETD-') ||
     text.endsWith('-ETD') ||
     text.includes('ETD-ALL') ||
     /\bETD\b/.test(text)
   ) {
-    return 'Electro-thermal linked fire damper';
+    return 'thermal linked fire damper';
   }
 
   // Fusible linked fire damper (FLD)
@@ -616,7 +618,23 @@ function cleanAssetWorkString(str: string): string {
     .replace(/\s+ALL\s*[.]?$/i, '')
     .replace(/[\s\-–—;,]+\(ALL\)\s*$/i, '')
     .replace(/[\s\-–—;,]+$/i, '')
+    .replace(/[.]+$/g, '')
     .trim();
+
+  // User rule: ACC = AIR-COOLED CHILLER
+  if (/^ACC$/i.test(res) || /^ACC[\s\-]+AIR[\s\-]*COOLED[\s\-]*CHILLER/i.test(res)) {
+    return 'AIR-COOLED CHILLER';
+  }
+
+  // User rule: MR TPB ECS-Electro-thermal linked fire damper = thermal linked fire damper
+  if (/^Electro[\s\-]+thermal\s+linked\s+fire\s+damper/i.test(res) || /^thermal\s+linked\s+fire\s+damper/i.test(res)) {
+    return 'thermal linked fire damper';
+  }
+
+  // User rule: MR TPB ECS-Fusible linked fire damper = Fusible linked fire damper
+  if (/^Fusible\s+linked\s+fire\s+damper/i.test(res)) {
+    return 'Fusible linked fire damper';
+  }
 
   // If what remains is purely an acronym code (e.g. "ACC-1", "ACC", "WPF"), match standard item
   if (/^[A-Z0-9]{2,6}(?:[-_]\d+)?$/i.test(res)) {
@@ -931,6 +949,7 @@ const DEFAULT_QTY_MAP: Record<string, string> = {
   'Air Handling Unit /Primary Air Handling Unit': '21',
   'Fan Coil Unit': '109',
   'Air Cooled Chiller': '6',
+  'AIR-COOLED CHILLER': '6',
   'Chilled Water Pump': '8',
   'Washable Panel Filter': '189',
   'Chem. Dosing Unit': '3',
@@ -949,6 +968,8 @@ const DEFAULT_QTY_MAP: Record<string, string> = {
   'Sensor': '1 lot',
   'Flexible Connection': '1 lot',
   'Pipework Insulation': '1 lot',
+  'thermal linked fire damper': '1',
+  'Fusible linked fire damper': '1',
 };
 
 export interface MatchedItemSummary {
@@ -1754,39 +1775,21 @@ export async function parseExcelFile(
 }
 
 /**
- * Downloads a pre-formatted Excel template for MTR Maintenance Engineer with real W/O examples
+ * Downloads a clean pre-formatted Excel template for MTR Maintenance Engineer
  */
 export function downloadSampleExcelTemplate() {
   const wsData = [
-    ['MTRC Depot - TWD'],
-    ['PM PERFORMANCE BREAKDOWN in July - 2026'],
+    ['MTR PM PERFORMANCE BREAKDOWN'],
+    ['PM PERFORMANCE BREAKDOWN'],
     ['Contract No.: M1202-19E'],
     [''],
-    ['STATION', 'WORK DESCRIPTION', 'PM W/O', 'QTY', 'M', '2M', '3M', '4M', '6M', 'Y', '2Y'],
-    ['TWD', 'Air Handling Unit /Primary Air Handling Unit', 'MR-TWD-AHU-ALL', '21', '21', '', '', '', '', '', ''],
-    ['TWD', 'Fan Coil Unit', 'MR-TWD-FCU-ALL', '109', '109', '', '', '', '', '', ''],
-    ['TWD', 'Air Cooled Chiller', 'MR TMD ECS-ACC-AIR-COOLED CHILLER', '6', '', '6', '', '', '', '', ''],
-    ['TWD', 'Chilled Water Pump', 'MR-TWD-CWP-ALL', '8', '8', '', '', '', '', '', ''],
-    ['TWD', 'Washable Panel Filter', 'MR-TWD WASHABLE PANEL FILTER ;TWD ;ALL', '189', '189', '', '', '', '', '', ''],
-    ['TWD', 'Chem. Dosing Unit', 'MR-TWD-CDU-ALL', '3', '', '', '3', '', '', '', ''],
-    ['TWD', 'Motor Control Centre', 'MR-TWD-MCC-ALL; MOTOR CONTROL CENTER', '2', '', '', '', '', '2', '', ''],
-    ['TWD', 'Motor Control Panel', 'MR-TWD-MCP-ALL', '9', '9', '', '', '', '', '', ''],
-    ['TWD', 'Differential By-pass Valve & Control', 'MR-TWD-DBV-ALL', '3', '', '', '', '3', '', '', ''],
-    ['TWD', 'Disposal Bag Filter', 'MR-TWD-DBF-ALL; DISPOSAL BAG FILTER', '62', '62', '', '', '', '', '', ''],
-    ['TWD', 'Chemical Feed Tank', 'MR-TWD-CFT-ALL', '3', '3', '', '', '', '', '', ''],
-    ['TWD', 'F & E Tank', 'MR-TWD-FET-ALL', '2', '2', '', '', '', '', '', ''],
-    ['TWD', 'Make Up Water Tank', 'MR-TWD-MWT-ALL', '1', '1', '', '', '', '', '', ''],
-    ['TWD', 'Metering Pump', 'MR-TWD-MP-ALL', '4', '4', '', '', '', '', '', ''],
-    ['TWD', 'Presurization Unit', 'MR-TWD-PU-ALL', '3', '', '', '3', '', '', '', ''],
-    ['TWD', 'Pipework', 'MR-TWD-PIPE-ALL', '1 lot', '1 lot', '', '', '', '', '', ''],
-    ['TWD', 'Motorised Operated Valve', 'MR-TWD-MOV-ALL; MOTORISED OPERATED VALVE', '21', '21', '', '', '', '', '', ''],
-    ['TWD', 'Valve', 'MR-TWD-VALVE-ALL', '1 lot', '1 lot', '', '', '', '', '', ''],
-    ['TWD', 'Sensor', 'MR-TWD-SENSOR-ALL', '1 lot', '1 lot', '', '', '', '', '', ''],
-    ['TWD', 'Flexible Connection', 'MR-TWD-FLEX-ALL', '1 lot', '1 lot', '', '', '', '', '', ''],
-    ['TWD', 'Pipework Insulation', 'MR-TWD-INS-ALL', '1 lot', '1 lot', '', '', '', '', '', ''],
+    ['STATION', 'WORK DESCRIPTION', 'PM W/O', 'QTY', 'M', '2M', '3M', '4M', '6M', 'Y', '18M', '2Y', '3Y'],
+    ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', '', ''],
     [''],
     ['Prepared by:', '', '', '', 'Verified by:', '', '', '', 'Endorsed by:'],
-    ['Name & Staff No. :', 'Lee Siu Keung (15224)', '', '', 'Name & Staff No. :', '', '', '', 'Name & Staff No. :'],
+    ['Name & Staff No. :', '', '', '', 'Name & Staff No. :', '', '', '', 'Name & Staff No. :'],
     ['Date :', new Date().toISOString().slice(0, 10), '', '', 'Date :', '', '', '', 'Date :'],
   ];
 
@@ -1803,7 +1806,9 @@ export function downloadSampleExcelTemplate() {
     { wch: 6 }, // 4M
     { wch: 6 }, // 6M
     { wch: 6 }, // Y
+    { wch: 6 }, // 18M
     { wch: 6 }, // 2Y
+    { wch: 6 }, // 3Y
   ];
 
   const wb = XLSX.utils.book_new();
